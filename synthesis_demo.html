@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Catalyst DMS — Enterprise</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #ffffff; overflow-x: hidden; font-family: 'Helvetica Neue', Arial, sans-serif; color: #051C2C; -webkit-font-smoothing: antialiased; }
+  @keyframes panelIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  @keyframes itemIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .grid { width: 100%; border-collapse: collapse; }
+  .grid th { position: sticky; top: 0; z-index: 2; background: #f7f7f7; border-bottom: 1px solid #d9d9d9; padding: 8px 14px; font-size: 11px; font-weight: 700; color: #898989; text-transform: uppercase; letter-spacing: 0.04em; text-align: left; white-space: nowrap; }
+  .grid td { padding: 8px 14px; border-bottom: 1px solid #f2f2f2; font-size: 13px; color: #051C2C; vertical-align: middle; }
+  .grid tr:hover td { background: #fafafa; }
+  .tag { display: inline-block; padding: 1px 8px; font-size: 11px; font-weight: 600; }
+  .tag-ok { background: #E5F5F0; color: #00806A; }
+  .tag-warn { background: #FFF4E5; color: #92400e; }
+  .tag-risk { background: #FDECEC; color: #B91C1C; }
+  .tag-neutral { background: #F2F2F2; color: #555; }
+  .uuid { font-size: 11px; color: #B0B0B0; font-family: 'SF Mono', Consolas, monospace; }
+  .empty { color: #D9D9D9; }
+  .truncate { display: inline-block; word-break: break-word; }
+  .grid .truncate { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  .grid .truncate.expanded { max-width: none; white-space: normal; overflow: visible; }
+
+  .rd-row { display: flex; min-height: 44px; border-bottom: 1px solid #F7F7F7; }
+  .rd-row:hover { background: #FAFAFA; }
+  .rd-label { width: 180px; flex-shrink: 0; padding: 12px 20px; font-size: 11px; color: #898989; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+  .rd-val { flex: 1; padding: 10px 20px; font-size: 13px; color: #051C2C; line-height: 1.6; cursor: text; }
+  .rd-val:hover { background: #F7F7F7; }
+
+  .btn { padding: 6px 14px; border: 1px solid #D9D9D9; background: #fff; cursor: pointer; font-size: 11px; font-weight: 600; color: #051C2C; letter-spacing: 0.02em; display: inline-flex; align-items: center; gap: 4px; transition: all 0.15s; }
+  .btn:hover { background: #F7F7F7; border-color: #B0B0B0; }
+  .btn-fill { background: #051C2C; color: #fff; border-color: #051C2C; }
+  .btn-fill:hover { background: #0A2940; }
+  .btn-del { color: #B91C1C; border-color: #FDECEC; }
+  .btn-del:hover { background: #FDECEC; }
+  .btn-ghost { border: none; background: none; }
+  .btn-ghost:hover { background: #F2F2F2; }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; font-size: 10px; font-weight: 700; letter-spacing: 0.03em; }
+  .badge-live { background: #E5F5F0; color: #00806A; }
+  .badge-demo { background: #FFF4E5; color: #92400e; }
+
+  .sb-item { padding: 8px 20px; cursor: pointer; font-size: 13px; color: #898989; transition: all 0.1s; border-left: 2px solid transparent; }
+  .sb-item:hover { background: #F7F7F7; color: #051C2C; }
+  .sb-item.active { background: #F2F8FF; border-left-color: #0070AD; color: #051C2C; font-weight: 600; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+const C = { navy:"#051C2C", teal:"#00BFB3", blue:"#0070AD", light:"#A0D8EF", red:"#E8532E", grey:"#898989", lgrey:"#F2F2F2", mgrey:"#D9D9D9", white:"#FFFFFF" };
+const PAL = [C.teal, C.blue, C.navy, C.light];
+
+// ═══ SUPABASE ═══
+const SUPABASE_URL = "https://nhervuqwpxlihhmkevvk.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZXJ2dXF3cHhsaWhobWtldnZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQzODAxODksImV4cCI6MjA1OTk1NjE4OX0.Lx98G5FHy5ek1jsfJaYunzWXo8d-vduIatc-IxAFwm4";
+const ORG_ID = "b8c7a8c9-e1d2-4f5e-8a9b-1c2d3e4f5a6b";
+const SCHEMA = "catalyst";
+const sb = {
+  _h(){return{"apikey":SUPABASE_ANON_KEY,"Authorization":`Bearer ${SUPABASE_ANON_KEY}`,"Content-Type":"application/json","Prefer":"return=representation","Accept-Profile":SCHEMA,"Content-Profile":SCHEMA}},
+  async select(t,o={}){const p=new URLSearchParams();if(o.eq)Object.entries(o.eq).forEach(([k,v])=>p.append(k,`eq.${v}`));if(o.order)p.append("order",o.order);if(o.limit)p.append("limit",o.limit);const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${p}`,{headers:this._h()});if(!r.ok)throw new Error(r.status);return r.json()},
+  async insert(t,row){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}`,{method:"POST",headers:this._h(),body:JSON.stringify(row)});if(!r.ok)throw new Error(r.status);return r.json()},
+  async update(t,id,u){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}`,{method:"PATCH",headers:this._h(),body:JSON.stringify(u)});if(!r.ok)throw new Error(r.status);return r.json()},
+  async remove(t,id){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}`,{method:"DELETE",headers:this._h()});if(!r.ok)throw new Error(r.status);return true},
+  async ping(){try{const r=await fetch(`${SUPABASE_URL}/rest/v1/od_synthesis?limit=1`,{headers:this._h(),signal:AbortSignal.timeout(5000)});return r.ok}catch{return false}}
+};
+
+function useData(t){
+  const[data,setData]=useState([]);const[loading,setLoading]=useState(true);const[isLive,setIsLive]=useState(false);
+  const refresh=useCallback(async()=>{
+    if(!t){setLoading(false);return;}
+    try{setLoading(true);const r=await sb.select(t,{eq:{org_id:ORG_ID}});console.log(`[useData] ${t}: ${r?r.length:0} rows`);setData(r||[]);setIsLive(true)}
+    catch(e){console.warn(`[useData] ${t} failed:`,e.message);setIsLive(false);setData([])}
+    finally{setLoading(false)}
+  },[t]);
+  useEffect(()=>{refresh()},[refresh]);return{data,loading,isLive,refresh};
+}
+
+// ═══ FIELD TYPE ═══
+function ft(k,v){if(k==="id"||k==="org_id")return"pk";if(k.endsWith("_id")||k.endsWith("_by_id"))return"fk";if(k.endsWith("_ids")||Array.isArray(v))return"arr";if(k.includes("date")||k==="start"||k==="target")return"date";if(k==="status"||k==="completion_status"||k==="record_status"||k==="level_of_risk")return"status";if(typeof v==="boolean"||k.startsWith("is_")||k.startsWith("for_")||k==="sample_data")return"bool";if(typeof v==="number"||k.includes("amount")||k.includes("value")||k.includes("score")||k==="fiscal_year"||k==="airtable_id")return"num";return"text"}
+function sc(v){if(!v)return"neutral";const s=String(v).toLowerCase();if(s.includes("complete")||s.includes("ahead")||s.includes("active")||s.includes("approved"))return"ok";if(s.includes("progress")||s.includes("on track")||s.includes("planning")||s.includes("scheduled"))return"warn";if(s.includes("not started")||s.includes("behind")||s.includes("high")||s.includes("open"))return"risk";return"neutral"}
+
+function Cell({k,v}){
+  const[expanded,setExpanded]=useState(false);
+  if(v===null||v===undefined||v==="")return<span className="empty">—</span>;
+  const t=ft(k,v);
+  if(t==="pk"||t==="fk")return<span className="uuid" title={String(v)}>{String(v).slice(0,8)}…</span>;
+  if(t==="arr")return<span style={{fontSize:"11px",color:C.grey}}>{Array.isArray(v)?v.length+" items":"—"}</span>;
+  if(t==="status")return<span className={`tag tag-${sc(v)}`}>{String(v)}</span>;
+  if(t==="bool")return<span>{v===true?"Yes":v===false?"No":String(v)}</span>;
+  if(t==="date")return<span style={{fontVariantNumeric:"tabular-nums"}}>{String(v).slice(0,10)}</span>;
+  if(t==="num")return<span style={{fontVariantNumeric:"tabular-nums"}}>{String(v)}</span>;
+  return<span className={`truncate${expanded?" expanded":""}`} title={String(v)} onClick={(e)=>{e.stopPropagation();setExpanded(!expanded)}}>{String(v)}</span>;
+}
+
+// ═══ RECORD DETAIL ═══
+function RecordDetail({record,allRecords,tableName,onClose,onSave,onNav}){
+  const[ef,setEf]=useState(null);const[ev,setEv]=useState("");const[saving,setSaving]=useState(false);const ref=useRef(null);
+  useEffect(()=>{if(ref.current)ref.current.focus()},[ef]);if(!record)return null;
+  const sys=new Set(["id","org_id","created_at","updated_at","sample_data"]);
+  const fields=Object.keys(record);const idx=allRecords.findIndex(r=>r.id===record.id);
+  const title=record[fields.find(f=>!sys.has(f)&&typeof record[f]==="string"&&record[f])]||"Record";
+  const save=async(f)=>{setSaving(true);try{await sb.update(tableName,record.id,{[f]:ev});onSave&&onSave()}catch(e){console.error(e)}setEf(null);setSaving(false)};
+  const pretty=k=>k.replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase());
+
+  return(
+    <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:0,right:0,bottom:0,width:"540px",background:"#fff",borderLeft:"1px solid #D9D9D9",zIndex:250,display:"flex",flexDirection:"column",boxShadow:"-2px 0 20px rgba(0,0,0,0.06)",animation:"panelIn 0.2s ease"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 20px",borderBottom:"1px solid #F2F2F2",flexShrink:0}}>
+        <div style={{display:"flex",gap:"4px",alignItems:"center"}}>
+          <button className="btn btn-ghost" onClick={()=>idx>0&&onNav(allRecords[idx-1])} style={{opacity:idx>0?1:0.3,padding:"4px 6px",fontSize:"11px"}}>Prev</button>
+          <button className="btn btn-ghost" onClick={()=>idx<allRecords.length-1&&onNav(allRecords[idx+1])} style={{opacity:idx<allRecords.length-1?1:0.3,padding:"4px 6px",fontSize:"11px"}}>Next</button>
+          <span style={{fontSize:"11px",color:C.grey,marginLeft:"8px"}}>{idx+1} of {allRecords.length}</span>
+        </div>
+        <button className="btn btn-ghost" onClick={onClose} style={{fontSize:"14px",padding:"4px 8px"}}>Close</button>
+      </div>
+      <div style={{padding:"24px 28px 20px",borderBottom:"1px solid #F2F2F2"}}>
+        <div style={{fontSize:"10px",color:C.grey,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"6px"}}>{tableName}</div>
+        <div style={{fontSize:"20px",fontWeight:700,color:C.navy,lineHeight:1.3}}>{String(title).slice(0,80)}</div>
+      </div>
+      <div style={{flex:1,overflowY:"auto"}}>
+        {fields.map((field,i)=>{const v=record[field];const isEd=ef===field;const isSys=sys.has(field);const isLong=typeof v==="string"&&v.length>100;
+          return(<div key={field} className="rd-row" style={{animation:`itemIn 0.1s ease ${i*0.01}s both`}}>
+            <div className="rd-label">{pretty(field)}</div>
+            <div className="rd-val" onClick={()=>{if(!isSys&&!isEd){setEf(field);setEv(v||"")}}}>
+              {isEd?(isLong?<textarea ref={ref} value={ev} onChange={e=>setEv(e.target.value)} onBlur={()=>save(field)} onKeyDown={e=>{if(e.key==="Escape")setEf(null)}} style={{width:"100%",minHeight:"60px",border:"1px solid "+C.blue,padding:"6px 8px",fontSize:"13px",fontFamily:"inherit",outline:"none"}} rows={3}/>
+              :<input ref={ref} value={ev} onChange={e=>setEv(e.target.value)} onBlur={()=>save(field)} onKeyDown={e=>{if(e.key==="Enter")save(field);if(e.key==="Escape")setEf(null)}} style={{width:"100%",border:"1px solid "+C.blue,padding:"6px 8px",fontSize:"13px",fontFamily:"inherit",outline:"none"}}/>)
+              :<Cell k={field} v={v}/>}
+            </div>
+          </div>);})}
+      </div>
+      {saving&&<div style={{padding:"8px 28px",fontSize:"11px",color:C.blue,borderTop:"1px solid #F2F2F2"}}>Saving…</div>}
+    </div>);
+}
+
+// ═══ GRID ═══
+function Grid({tableName,data,loading,isLive,refresh,onExpand,compact}){
+  const[ec,setEc]=useState(null);const[ev,setEv]=useState("");const[adding,setAdding]=useState(false);const[nr,setNr]=useState({});const[saving,setSaving]=useState(false);const iref=useRef(null);
+  useEffect(()=>{if(iref.current)iref.current.focus()},[ec]);
+  const hide=new Set(["id","org_id","created_at","updated_at","sample_data"]);
+  const cols=data.length>0?Object.keys(data[0]).filter(k=>!hide.has(k)):[];
+  const pretty=k=>k.replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase());
+  const saveEd=async()=>{if(!ec)return;setSaving(true);try{await sb.update(tableName,ec.rid,{[ec.col]:ev});refresh()}catch(e){console.error(e)}setEc(null);setSaving(false)};
+  const addRow=async()=>{setSaving(true);try{await sb.insert(tableName,{org_id:ORG_ID,record_status:"active",sample_data:true,...nr});refresh();setAdding(false);setNr({})}catch(e){console.error(e)}setSaving(false)};
+  const del=async(id)=>{if(!window.confirm("Delete this record?"))return;try{await sb.remove(tableName,id);refresh()}catch(e){console.error(e)}};
+
+  return(<div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:compact?"4px 0":"8px 0",marginBottom:"8px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+        <span className={`badge badge-${isLive?"live":"demo"}`}>{isLive?"Live":"Demo"}</span>
+        <span style={{fontSize:"12px",color:C.grey}}>{data.length} record{data.length!==1?"s":""}</span>
+      </div>
+      <div style={{display:"flex",gap:"6px"}}>
+        <button className="btn" onClick={refresh}>Refresh</button>
+        <button className="btn btn-fill" onClick={()=>{setAdding(true);setNr({})}}>Add record</button>
+      </div>
+    </div>
+    {loading?<div style={{textAlign:"center",padding:"40px",color:C.grey,fontSize:"13px"}}>Loading…</div>
+    :<div style={{maxHeight:compact?"280px":"calc(100vh-160px)",overflowY:"auto",overflowX:"auto",border:"1px solid #D9D9D9"}}>
+      <table className="grid">
+        <thead><tr>
+          <th style={{width:"44px"}}>#</th>
+          {cols.map(c=><th key={c}>{pretty(c)}</th>)}
+          <th style={{width:"80px"}}></th>
+        </tr></thead>
+        <tbody>
+          {data.map((row,ri)=>(<tr key={row.id||ri} onClick={()=>onExpand&&onExpand(row)} style={{cursor:onExpand?"pointer":"default"}}>
+            <td style={{color:C.mgrey,fontSize:"11px",textAlign:"center"}}>{ri+1}</td>
+            {cols.map(c=>{const isEd=ec&&ec.rid===row.id&&ec.col===c;return<td key={c} onClick={e=>{e.stopPropagation();setEc({rid:row.id,col:c});setEv(row[c]||"")}}>
+              {isEd?<input ref={iref} value={ev} onChange={e=>setEv(e.target.value)} onBlur={saveEd} onKeyDown={e=>{if(e.key==="Enter")saveEd();if(e.key==="Escape")setEc(null)}} style={{width:"100%",border:"1px solid "+C.blue,padding:"4px 6px",fontSize:"13px",fontFamily:"inherit",outline:"none"}}/>
+              :<Cell k={c} v={row[c]}/>}
+            </td>})}
+            <td onClick={e=>e.stopPropagation()}><div style={{display:"flex",gap:"4px"}}>
+              {onExpand&&<button className="btn btn-ghost" onClick={()=>onExpand(row)} style={{padding:"2px 6px",fontSize:"10px"}}>Open</button>}
+              <button className="btn btn-ghost btn-del" onClick={()=>del(row.id)} style={{padding:"2px 6px",fontSize:"10px"}}>Delete</button>
+            </div></td>
+          </tr>))}
+          {adding&&<tr style={{background:"#F2F8FF"}}><td></td>
+            {cols.map(c=><td key={c}><input placeholder={pretty(c)} value={nr[c]||""} onChange={e=>setNr(p=>({...p,[c]:e.target.value}))} style={{width:"100%",border:"1px solid "+C.blue,padding:"4px 6px",fontSize:"13px",fontFamily:"inherit",outline:"none"}}/></td>)}
+            <td><div style={{display:"flex",gap:"2px"}}><button className="btn btn-fill" onClick={addRow} style={{padding:"2px 8px",fontSize:"10px"}}>Save</button><button className="btn" onClick={()=>setAdding(false)} style={{padding:"2px 8px",fontSize:"10px"}}>Cancel</button></div></td>
+          </tr>}
+        </tbody>
+      </table>
+    </div>}
+  </div>);
+}
+
+// ═══ TABLE GROUPS ═══
+const TG=[
+  {g:"Strategy",c:C.blue,t:[{k:"od_synthesis",l:"Synthesis"},{k:"od_nine_decisions",l:"Nine Decisions"},{k:"od_values",l:"Values"},{k:"od_swot",l:"SWOT"},{k:"od_ambition_golden_threads",l:"Golden Threads"},{k:"od_business_model",l:"Business Model"},{k:"od_strategy",l:"Strategy"},{k:"od_habits",l:"Habits"}]},
+  {g:"Execution",c:C.teal,t:[{k:"od_exec_portfolios",l:"Portfolios"},{k:"od_objectives",l:"Objectives"},{k:"od_actions",l:"Actions"},{k:"od_projects",l:"Projects"},{k:"od_kpis",l:"KPIs"},{k:"od_strategic_plans",l:"Strategic Plans"},{k:"od_plan_templates",l:"Plan Templates"}]},
+  {g:"Governance",c:"#6366f1",t:[{k:"od_rasci",l:"RASCI"},{k:"od_budgets",l:"Budgets"},{k:"od_risk_register",l:"Risk Register"},{k:"od_review_schedule",l:"Review Schedule"},{k:"od_gccs",l:"GCCs"}]},
+  {g:"Organisation",c:"#B91C1C",t:[{k:"od_companies",l:"Companies"},{k:"od_users",l:"Users"},{k:"od_roles",l:"Roles"},{k:"od_org_units",l:"Org Units"},{k:"od_employments",l:"Employments"},{k:"od_stakeholder_groups",l:"Stakeholders"}]},
+  {g:"Reference",c:C.grey,t:[{k:"od_countries",l:"Countries"},{k:"od_regions",l:"Regions"},{k:"od_currencies",l:"Currencies"},{k:"od_locations",l:"Locations"},{k:"od_project_types",l:"Project Types"}]},
+];
+
+function TablesTab({initialTable}){
+  const[at,setAt]=useState(initialTable||"od_synthesis");const[er,setEr]=useState(null);
+  const{data,loading,isLive,refresh}=useData(at);
+  useEffect(()=>{setEr(null)},[at]);
+  const info=TG.flatMap(g=>g.t).find(t=>t.k===at);
+  return(<div style={{display:"flex",height:"calc(100vh-52px)",overflow:"hidden"}}>
+    <div style={{width:"210px",borderRight:"1px solid #D9D9D9",overflowY:"auto",background:"#FAFAFA",flexShrink:0}}>
+      <div style={{padding:"20px 20px 12px",fontSize:"11px",fontWeight:700,color:C.navy,textTransform:"uppercase",letterSpacing:"0.06em"}}>Tables</div>
+      {TG.map((g,gi)=>(<div key={gi} style={{marginBottom:"8px"}}>
+        <div style={{padding:"8px 20px 4px",fontSize:"9px",fontWeight:700,color:g.c,textTransform:"uppercase",letterSpacing:"0.08em"}}>{g.g}</div>
+        {g.t.map(t=><div key={t.k} className={`sb-item ${at===t.k?"active":""}`} onClick={()=>setAt(t.k)}>{t.l}</div>)}
+      </div>))}
+    </div>
+    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{padding:"16px 28px",borderBottom:"1px solid #D9D9D9",background:"#fff",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+        <div><div style={{fontSize:"18px",fontWeight:700,color:C.navy}}>{info?.l||at}</div><div style={{fontSize:"11px",color:C.grey,marginTop:"2px"}}>{at}</div></div>
+      </div>
+      <div style={{flex:1,overflow:"auto",padding:"20px 28px"}}><Grid tableName={at} data={data} loading={loading} isLive={isLive} refresh={refresh} onExpand={r=>setEr(r)}/></div>
+    </div>
+    {er&&<RecordDetail record={er} allRecords={data} tableName={at} onClose={()=>setEr(null)} onSave={refresh} onNav={r=>setEr(r)}/>}
+  </div>);
+}
+
+// ═══ NODE → TABLE ═══
+const NT={synthesis:"od_synthesis",nine_decisions:"od_nine_decisions",values:"od_values",swot:"od_swot",golden_threads:"od_ambition_golden_threads",business_model:"od_business_model",strategy:"od_strategy",portfolios:"od_exec_portfolios",objectives:"od_objectives",actions:"od_actions",projects:"od_projects",kpis:"od_kpis",governance:"od_rasci"};
+
+// ═══ NODES ═══
+const nodes={
+  synthesis:{id:"synthesis",label:"Synthesis",color:"#E8532E",x:400,y:60,phase:"Diagnose",analysis:{headline:"The starting point of strategic clarity",insight:"Diagnoses where the organisation is today — market position, competitive landscape, capacity gaps.",keyQuestion:"What is the honest truth about where we are versus where we need to be?"},children:["nine_decisions"]},
+  nine_decisions:{id:"nine_decisions",label:"Nine Decisions",color:"#F59E0B",x:400,y:160,phase:"Define",analysis:{headline:"9 foundational identity decisions",insight:"Purpose, Vision, Mission, Values, Positioning, Revenue Model, Growth, Capabilities, Culture.",keyQuestion:"What specific capabilities does the team need that they don't have today?"},children:["golden_threads","values","swot"]},
+  values:{id:"values",label:"Values",color:"#F59E0B",x:130,y:280,phase:"Define",analysis:{headline:"Core values that drive behaviour",insight:"Must be distinctive and testable. The challenge is embedding them into hiring, reviews, and daily rituals.",keyQuestion:"How will you measure whether people are actually living these values?"},children:[]},
+  swot:{id:"swot",label:"SWOT",color:"#F59E0B",x:670,y:280,phase:"Define",analysis:{headline:"Strategic landscape assessment",insight:"Reveals competitive advantages and structural vulnerabilities.",keyQuestion:"Which weakness, if unaddressed, could neutralise your biggest strength?"},children:[]},
+  golden_threads:{id:"golden_threads",label:"Golden Threads",color:C.teal,x:400,y:380,phase:"Ambition",analysis:{headline:"The ambitions everything else must deliver",insight:"Define WHAT we want to achieve. Business model and strategy define HOW.",keyQuestion:"Which thread breaks if you had to deprioritise one?"},children:["business_model","strategy"]},
+  business_model:{id:"business_model",label:"Business Model",color:"#D97706",x:200,y:500,phase:"Design",analysis:{headline:"The value creation engine",insight:"Describes how the organisation creates, delivers, and captures value.",keyQuestion:"Does the model scale to meet the golden thread ambitions?"},children:[]},
+  strategy:{id:"strategy",label:"Strategy",color:"#D97706",x:530,y:500,phase:"Design",analysis:{headline:"How we deliver the ambitions",insight:"Sequences priorities. The risk is trying to do everything simultaneously.",keyQuestion:"Is the team resourced to execute year-1 priorities?"},children:["portfolios"]},
+  portfolios:{id:"portfolios",label:"Portfolios",color:C.blue,x:400,y:620,phase:"Structure",analysis:{headline:"Portfolios organise the enterprise — not departments",insight:"Each owns objectives, capabilities, resources, people. Replaces departmental silos that cause strategic drift.",keyQuestion:"Are the right people accountable — and do they have authority?"},children:["objectives"]},
+  objectives:{id:"objectives",label:"Objectives",color:C.blue,x:400,y:740,phase:"Deploy",analysis:{headline:"Balanced scorecard objectives assigned to portfolios",insight:"Assigned to golden threads and portfolios. Lead and lag indicators track progress.",keyQuestion:"Does every objective trace to a golden thread and a delivery mechanism?"},children:["actions","projects","kpis","governance"]},
+  actions:{id:"actions",label:"Actions",color:C.teal,x:170,y:870,phase:"Deliver",analysis:{headline:"Parallel delivery mechanism",insight:"Discrete tasks assigned to individuals, alongside projects and procurement.",keyQuestion:"Who owns the blockers?"},children:[]},
+  projects:{id:"projects",label:"Projects",color:C.teal,x:400,y:870,phase:"Deliver",analysis:{headline:"Budgeted initiatives delivering objectives",insight:"Each assigned to an objective and portfolio with budget and impact rating.",keyQuestion:"Is budget concentration creating delivery risk?"},children:[]},
+  kpis:{id:"kpis",label:"KPIs",color:C.teal,x:630,y:870,phase:"Deliver",analysis:{headline:"Measuring what matters",insight:"Target value, actual value, measurement frequency, and owner per metric.",keyQuestion:"Which KPIs will miss year-end target at current velocity?"},children:[]},
+  governance:{id:"governance",label:"Governance",color:"#6366f1",x:400,y:980,phase:"Govern",analysis:{headline:"The management operating system",insight:"Accountability, rhythm, risk awareness, compliance, financial control.",keyQuestion:"Is review cadence frequent enough to catch slippage?"},children:[]},
+};
+const allEdges=[];Object.values(nodes).forEach(n=>n.children.forEach(c=>allEdges.push({from:n.id,to:c})));
+const NW=170,NH=54;
+function ep(f,t){const x1=f.x+NW/2,y1=f.y+NH,x2=t.x+NW/2,y2=t.y,cp=Math.abs(y2-y1)*0.5;return`M${x1} ${y1}C${x1} ${y1+cp},${x2} ${y2-cp},${x2} ${y2}`}
+
+// ═══ PORTFOLIO CASCADE COLUMNS ═══
+// 4 vertical columns, one per portfolio. Read top to bottom:
+// Golden Thread (WHY) → Portfolio (WHO) → Objectives (WHAT) → Actions/Projects (HOW) → Budget
+// Column height = relative effort. Status indicators show health.
+function PortfolioRollup(){
+  const[R,setR]=useState(null);const[loading,setLoading]=useState(true);
+  useEffect(()=>{(async()=>{try{
+    const[portfolios,objectives,projects,actions,strategicPlans,kpis,goldenThreads,users,jtPO,jtPPr,jtPSP,jtAO,jtGO]=await Promise.all([
+      sb.select("od_exec_portfolios",{eq:{org_id:ORG_ID}}),sb.select("od_objectives",{eq:{org_id:ORG_ID}}),
+      sb.select("od_projects",{eq:{org_id:ORG_ID}}),sb.select("od_actions",{eq:{org_id:ORG_ID}}),
+      sb.select("od_strategic_plans",{eq:{org_id:ORG_ID}}),sb.select("od_kpis",{eq:{org_id:ORG_ID}}),
+      sb.select("od_ambition_golden_threads",{eq:{org_id:ORG_ID}}),sb.select("od_users",{eq:{org_id:ORG_ID}}),
+      sb.select("jt_od_exec_portfolios_od_objectives",{eq:{org_id:ORG_ID}}),
+      sb.select("jt_od_exec_portfolios_od_projects",{eq:{org_id:ORG_ID}}),
+      sb.select("jt_od_exec_portfolios_od_strategic_plans",{eq:{org_id:ORG_ID}}),
+      sb.select("jt_od_actions_od_objectives",{eq:{org_id:ORG_ID}}),
+      sb.select("jt_od_ambition_golden_threads_od_objectives",{eq:{org_id:ORG_ID}}),
+    ]);
+    const om=Object.fromEntries(objectives.map(o=>[o.id,o])),pm=Object.fromEntries(projects.map(p=>[p.id,p])),
+          am=Object.fromEntries(actions.map(a=>[a.id,a])),sm=Object.fromEntries(strategicPlans.map(s=>[s.id,s])),
+          gm=Object.fromEntries(goldenThreads.map(g=>[g.id,g])),um=Object.fromEntries(users.map(u=>[u.id,u]));
+    const kbo={};kpis.forEach(k=>{if(!kbo[k.objective_id])kbo[k.objective_id]=[];kbo[k.objective_id].push(k)});
+    const abo={};jtAO.forEach(j=>{if(!abo[j.od_objectives_id])abo[j.od_objectives_id]=[];abo[j.od_objectives_id].push(j.od_actions_id)});
+    const gbo={};jtGO.forEach(j=>{if(!gbo[j.od_objectives_id])gbo[j.od_objectives_id]=[];gbo[j.od_objectives_id].push(j.od_ambition_golden_threads_id)});
+    const result=portfolios.map((p,i)=>{
+      const oi=jtPO.filter(j=>j.od_exec_portfolios_id===p.id).map(j=>j.od_objectives_id);
+      const pi2=jtPPr.filter(j=>j.od_exec_portfolios_id===p.id).map(j=>j.od_projects_id);
+      const si=jtPSP.filter(j=>j.od_exec_portfolios_id===p.id).map(j=>j.od_strategic_plans_id);
+      const objs=oi.map(id=>{const o=om[id];if(!o)return null;return{...o,actions:(abo[id]||[]).map(a=>am[a]).filter(Boolean),kpis:kbo[id]||[],gts:(gbo[id]||[]).map(g=>gm[g]).filter(Boolean)}}).filter(Boolean);
+      const prjs=pi2.map(id=>pm[id]).filter(Boolean);const sps=si.map(id=>sm[id]).filter(Boolean);
+      const tb=prjs.reduce((s,p)=>s+(Number(p.budget_amount)||0),0);const aa=objs.flatMap(o=>o.actions);
+      const owners=(p.owner_ids||[]).map(u=>um[u]).filter(Boolean).map(u=>u.full_name);
+      const gts=[...new Map(objs.flatMap(o=>o.gts.map(g=>[g.id,g])).filter(([_,g])=>g)).values()];
+      return{p,objs,prjs,sps,tb,aa,done:aa.filter(a=>a.status==="Complete").length,owners,gts};
+    });
+    setR(result);
+  }catch(e){console.error(e)}finally{setLoading(false)}})()},[]);
+
+  if(loading)return<div style={{padding:"32px",color:C.grey,fontSize:"13px"}}>Loading…</div>;
+  if(!R||!R.length)return null;
+  const tA=R.reduce((s,r)=>s+r.aa.length,0);const tD=R.reduce((s,r)=>s+r.done,0);
+  const tB=R.reduce((s,r)=>s+r.tb,0);const mxB=Math.max(...R.map(r=>r.tb),1);
+
+  const stC=v=>{if(!v)return{bg:"#F7F7F7",fg:C.grey};const s=String(v).toLowerCase();
+    if(s.includes("complete")||s.includes("ahead"))return{bg:"#E5F5F0",fg:"#00806A"};
+    if(s.includes("on track")||s.includes("progress")||s.includes("planning"))return{bg:"#FFF4E5",fg:"#92400e"};
+    if(s.includes("not started")||s.includes("behind"))return{bg:"#FDECEC",fg:"#B91C1C"};
+    return{bg:"#F7F7F7",fg:C.grey}};
+
+  return(<div style={{padding:"28px 32px"}}>
+    {/* Header */}
+    <div style={{marginBottom:"20px"}}>
+      <div style={{fontSize:"10px",color:C.grey,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:700,marginBottom:"8px"}}>Portfolio alignment</div>
+      <div style={{fontSize:"14px",fontWeight:700,color:C.navy,lineHeight:1.4,marginBottom:"4px"}}>
+        Each column is one portfolio's complete chain from ambition to execution.
+      </div>
+      <div style={{fontSize:"11px",color:C.grey}}>
+        Read top to bottom: golden thread (why) — portfolio (who) — objectives (what) — delivery (how) — budget (how much)
+      </div>
+    </div>
+
+    {/* The 4 columns */}
+    <div style={{display:"grid",gridTemplateColumns:`repeat(${R.length},1fr)`,gap:"16px",alignItems:"start"}}>
+      {R.map((r,i)=>{
+        const donePct=r.aa.length>0?Math.round(r.done/r.aa.length*100):0;
+        const budPct=tB>0?Math.round(r.tb/tB*100):0;
+        return(
+          <div key={r.p.id} style={{animation:`itemIn 0.15s ease ${i*0.05}s both`}}>
+
+            {/* WHY — Golden Thread */}
+            <div style={{padding:"10px 12px",background:C.teal+"08",borderTop:`2px solid ${C.teal}`,marginBottom:"2px"}}>
+              <div style={{fontSize:"8px",color:C.teal,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:700,marginBottom:"4px"}}>Why</div>
+              {r.gts.length>0?r.gts.map(gt=>(
+                <div key={gt.id} style={{fontSize:"11px",fontWeight:600,color:C.navy,lineHeight:1.3}}>{gt.ambition_golden_thread}</div>
+              )):<div style={{fontSize:"11px",color:C.mgrey,fontStyle:"italic"}}>Not linked</div>}
+            </div>
+
+            {/* WHO — Portfolio */}
+            <div style={{padding:"12px",background:C.navy,color:"#fff",marginBottom:"2px"}}>
+              <div style={{fontSize:"13px",fontWeight:700}}>{r.p.portfolio_name.replace(" Portfolio","")}</div>
+              <div style={{fontSize:"10px",opacity:0.7,marginTop:"2px"}}>{r.p.cost_centre_code}{r.owners.length>0?` — ${r.owners.join(", ")}`:""}</div>
+              {r.sps.length>0&&<div style={{fontSize:"9px",opacity:0.5,marginTop:"4px"}}>{r.sps.map(sp=>sp.strategic_plan).join(", ")}</div>}
+            </div>
+
+            {/* WHAT — Objectives */}
+            <div style={{background:"#FAFAFA",padding:"10px 12px",marginBottom:"2px",minHeight:"60px"}}>
+              <div style={{fontSize:"8px",color:C.grey,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:700,marginBottom:"8px"}}>What — {r.objs.length} objective{r.objs.length!==1?"s":""}</div>
+              {r.objs.map(obj=>{
+                const s=stC(obj.status);
+                const kpAvg=obj.kpis.length>0?Math.round(obj.kpis.reduce((s,k)=>s+(k.target_value>0?(k.actual_value/k.target_value)*100:0),0)/obj.kpis.length):null;
+                return(
+                  <div key={obj.id} style={{marginBottom:"10px",paddingLeft:"8px",borderLeft:`2px solid ${s.fg}`}}>
+                    <div style={{fontSize:"11px",fontWeight:600,color:C.navy,lineHeight:1.3,marginBottom:"2px"}}>{obj.objective}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:"4px"}}>
+                      <span style={{fontSize:"9px",fontWeight:600,color:s.fg,background:s.bg,padding:"0 5px"}}>{obj.status}</span>
+                      {kpAvg!==null&&<span style={{fontSize:"9px",color:C.grey}}>{kpAvg}%</span>}
+                    </div>
+                    {/* KPI bars */}
+                    {obj.kpis.map(k=>{
+                      const pct=k.target_value>0?Math.round((k.actual_value/k.target_value)*100):0;
+                      return(<div key={k.id} style={{display:"flex",alignItems:"center",gap:"4px",marginTop:"3px"}}>
+                        <div style={{width:"40px",height:"3px",background:"#E8E8E8"}}><div style={{width:`${Math.min(pct,100)}%`,height:"100%",background:pct>=100?C.teal:pct>=50?C.blue:C.red}}/></div>
+                        <span style={{fontSize:"8px",color:C.grey}}>{k.actual_value}/{k.target_value}</span>
+                      </div>);
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* HOW — Actions + Projects */}
+            <div style={{padding:"10px 12px",marginBottom:"2px",background:"#fff"}}>
+              <div style={{fontSize:"8px",color:C.grey,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:700,marginBottom:"6px"}}>How</div>
+              {/* Action completion */}
+              <div style={{marginBottom:"8px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"3px"}}>
+                  <span style={{fontSize:"10px",color:C.navy}}>{r.aa.length} actions</span>
+                  <span style={{fontSize:"10px",fontWeight:700,color:donePct>=50?C.teal:donePct>0?"#92400e":C.grey}}>{donePct}%</span>
+                </div>
+                <div style={{height:"4px",background:"#E8E8E8"}}>
+                  {r.aa.length>0&&<div style={{display:"flex",height:"100%"}}>
+                    <div style={{width:`${(r.done/r.aa.length)*100}%`,background:C.teal}}/>
+                    <div style={{width:`${((r.aa.length-r.done-r.aa.filter(a=>a.status==="Not Started").length)/r.aa.length)*100}%`,background:C.blue,opacity:0.5}}/>
+                  </div>}
+                </div>
+              </div>
+              {/* Projects */}
+              {r.prjs.map(pr=>{
+                const b=Number(pr.budget_amount)||0;const ps=stC(pr.status);
+                return(<div key={pr.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0",borderTop:"1px solid #F7F7F7"}}>
+                  <span style={{fontSize:"10px",color:C.navy}}>{pr.project_name}</span>
+                  <span style={{fontSize:"10px",fontWeight:700,color:C.navy}}>£{Math.round(b/1000)}k</span>
+                </div>);
+              })}
+            </div>
+
+            {/* Budget bar — proportional across all portfolios */}
+            <div style={{padding:"10px 12px",borderTop:`2px solid ${C.navy}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"4px"}}>
+                <span style={{fontSize:"10px",color:C.grey}}>Budget</span>
+                <span style={{fontSize:"14px",fontWeight:700,color:C.navy}}>£{Math.round(r.tb/1000)}k</span>
+              </div>
+              <div style={{height:"4px",background:"#E8E8E8"}}>
+                <div style={{width:`${budPct}%`,height:"100%",background:C.blue,opacity:0.4}}/>
+              </div>
+              <div style={{fontSize:"9px",color:C.grey,marginTop:"2px"}}>{budPct}% of total £{Math.round(tB/1000)}k</div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+
+    {/* Source */}
+    <div style={{fontSize:"9px",color:C.mgrey,marginTop:"20px"}}>Source: Catalyst DMS — Live data via junction tables — {tA} actions, {tD} complete ({tA>0?Math.round(tD/tA*100):0}%)</div>
+  </div>);
+}
+
+// ═══ ANALYSIS PANEL ═══
+function AnalysisPanel({nodeId,onClose,onOpenInTables}){
+  if(!nodeId)return null;const n=nodes[nodeId];const a=n.analysis;const tn=NT[nodeId];
+  const{data,loading,isLive,refresh}=useData(tn||"");const[er,setEr]=useState(null);const[sg,setSg]=useState(true);
+  return(
+    <div onClick={e=>e.stopPropagation()} style={{height:"100%",background:"#fff",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{flex:1,overflowY:"auto",animation:"panelIn 0.2s ease"}}>
+        {/* Header */}
+        <div style={{padding:"28px 32px 20px",borderBottom:"1px solid #F2F2F2"}}>
+          <button onClick={onClose} style={{position:"absolute",top:20,right:20,background:"none",border:"1px solid #D9D9D9",color:C.grey,cursor:"pointer",width:"28px",height:"28px",fontSize:"13px",display:"flex",alignItems:"center",justifyContent:"center"}}>x</button>
+          <div style={{fontSize:"10px",color:n.color,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:700,marginBottom:"8px"}}>{n.phase}</div>
+          <div style={{fontSize:"20px",fontWeight:700,color:C.navy,marginBottom:"6px"}}>{n.label}</div>
+          <div style={{fontSize:"11px",color:C.grey}}>{tn}</div>
+        </div>
+        {/* Key Question — first thing after title */}
+        <div style={{padding:"16px 32px",borderBottom:"1px solid #F2F2F2",background:"#FAFAFA"}}>
+          <div style={{fontSize:"10px",color:"#D97706",textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:700,marginBottom:"6px"}}>Key question</div>
+          <div style={{fontSize:"14px",color:C.navy,fontStyle:"italic",lineHeight:1.5}}>{a.keyQuestion}</div>
+        </div>
+        {/* Insight — AFTER key question */}
+        <div style={{padding:"16px 32px",borderBottom:"1px solid #F2F2F2"}}>
+          <div style={{fontSize:"10px",color:C.grey,textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:700,marginBottom:"6px"}}>Insight</div>
+          <div style={{fontSize:"13px",color:C.grey,lineHeight:1.7}}>{a.insight}</div>
+        </div>
+        {/* Records */}
+        {tn&&<div style={{padding:"20px 32px",borderBottom:"1px solid #F2F2F2"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
+            <div style={{fontSize:"10px",color:C.navy,textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:700}}>Records</div>
+            <div style={{display:"flex",gap:"6px"}}>
+              <button className="btn" onClick={()=>setSg(!sg)} style={{padding:"3px 10px",fontSize:"10px"}}>{sg?"Hide":"Show"}</button>
+              {onOpenInTables&&<button className="btn btn-fill" onClick={()=>onOpenInTables(tn)} style={{padding:"3px 10px",fontSize:"10px"}}>Open in Tables</button>}
+            </div>
+          </div>
+          {sg&&<Grid tableName={tn} data={data} loading={loading} isLive={isLive} refresh={refresh} onExpand={r=>setEr(r)} compact/>}
+        </div>}
+        {/* Portfolio Spine — AFTER records */}
+        {nodeId==="portfolios"&&<PortfolioRollup/>}
+      </div>
+      {er&&<RecordDetail record={er} allRecords={data} tableName={tn} onClose={()=>setEr(null)} onSave={refresh} onNav={r=>setEr(r)}/>}
+    </div>);
+}
+
+// ═══ GRAPH ═══
+function GraphView({selected,setSelected}){
+  const[hov,setHov]=useState(null);const[cnt,setCnt]=useState({});
+  const ac=hov||selected;const hN=new Set(),hE=new Set();
+  if(ac){hN.add(ac);allEdges.forEach((e,i)=>{if(e.from===ac||e.to===ac){hN.add(e.from);hN.add(e.to);hE.add(i)}})}
+  useEffect(()=>{(async()=>{const c={};for(const[n,t]of Object.entries(NT)){try{const r=await sb.select(t,{eq:{org_id:ORG_ID}});c[n]=r.length}catch{c[n]="?"}}setCnt(c)})()},[]);
+  const gc=id=>cnt[id]!==undefined?cnt[id]:"…";
+  const phases=[{y:40,h:90,l:"Diagnose",c:"#E8532E"},{y:135,h:220,l:"Define",c:"#F59E0B"},{y:360,h:100,l:"Ambition",c:C.teal},{y:475,h:110,l:"Design",c:"#D97706"},{y:595,h:110,l:"Structure",c:C.blue},{y:715,h:90,l:"Deploy",c:C.blue},{y:840,h:100,l:"Deliver",c:C.teal},{y:955,h:80,l:"Govern",c:"#6366f1"}];
+
+  return(<div style={{display:"flex",justifyContent:"center",padding:"32px 0 48px"}}>
+    <svg width={850} height={1080} viewBox="0 0 850 1080" style={{overflow:"visible"}}>
+      <rect width={850} height={1080} fill="#fff"/>
+      {phases.map((p,i)=>(<g key={i}>
+        <rect x={0} y={p.y} width={850} height={p.h} fill={p.c} opacity={0.03}/>
+        <line x1={0} y1={p.y} x2={850} y2={p.y} stroke={p.c} strokeWidth={0.5} opacity={0.15}/>
+        <rect x={0} y={p.y} width={3} height={p.h} fill={p.c} opacity={0.4}/>
+        <text x={14} y={p.y+16} style={{fontSize:"9px",fontWeight:700,fill:p.c,textTransform:"uppercase",letterSpacing:"0.1em"}}>{p.l}</text>
+      </g>))}
+      {allEdges.map((e,i)=>{const f=nodes[e.from],t=nodes[e.to],h=hE.has(i),a=ac!==null;
+        return<path key={i} d={ep(f,t)} fill="none" stroke={h?f.color:f.color+"40"} strokeWidth={h?2:1} opacity={a?(h?0.8:0.15):0.4} style={{transition:"all 0.3s"}}/>;
+      })}
+      {ac&&allEdges.filter((_,i)=>hE.has(i)).map((e,i)=>{const f=nodes[e.from];return<circle key={`p${i}`} r="2.5" fill={f.color} opacity={0.6}><animateMotion dur="1.5s" repeatCount="indefinite" path={ep(f,nodes[e.to])}/></circle>})}
+      {Object.values(nodes).map(n=>{const h=hN.has(n.id),a=ac!==null,c=gc(n.id);
+        return(<g key={n.id} onMouseEnter={()=>setHov(n.id)} onMouseLeave={()=>setHov(null)} onClick={e=>{e.stopPropagation();setSelected(n.id)}} style={{cursor:"pointer"}}>
+          <rect x={n.x} y={n.y} width={NW} height={NH} rx={0} fill={h?n.color+"08":"#fff"} stroke={n.color} strokeWidth={h?1.5:0.5} opacity={a?(h?1:0.3):1} style={{transition:"all 0.3s"}}/>
+          <text x={n.x+12} y={n.y+22} style={{fontSize:"13px",fontWeight:700,fill:C.navy,opacity:a?(h?1:0.3):1}}>{n.label}</text>
+          <text x={n.x+12} y={n.y+40} style={{fontSize:"10px",fill:C.grey,opacity:a?(h?1:0.3):1}}>{c} records</text>
+          <rect x={n.x+NW-28} y={n.y+6} width={22} height={14} fill={n.color} opacity={0.8}/>
+          <text x={n.x+NW-17} y={n.y+16} textAnchor="middle" style={{fontSize:"9px",fill:"#fff",fontWeight:700}}>{c}</text>
+        </g>);
+      })}
+    </svg>
+  </div>);
+}
+
+// ═══ CONNECTION ═══
+function ConnBadge(){
+  const[s,setS]=useState("…");
+  useEffect(()=>{sb.ping().then(ok=>setS(ok?"live":"demo"));const i=setInterval(()=>sb.ping().then(ok=>setS(ok?"live":"demo")),30000);return()=>clearInterval(i)},[]);
+  return<span className={`badge badge-${s==="live"?"live":"demo"}`}>{s==="live"?"Live":"Demo"}</span>;
+}
+
+// ═══ DASHBOARD ═══
+function Dashboard(){
+  const{data:obj}=useData("od_objectives");const{data:kpis}=useData("od_kpis");const{data:acts}=useData("od_actions");
+  const as=useMemo(()=>{const c=acts.filter(a=>a.status==="Complete").length,p=acts.filter(a=>a.status==="In Progress").length,n=acts.filter(a=>a.status==="Not Started").length;return{c,p,n,t:acts.length}},[acts]);
+  return(<div style={{maxWidth:"920px",margin:"0 auto",padding:"36px 48px"}}>
+    <div style={{fontSize:"10px",color:C.grey,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"4px"}}>Dashboard</div>
+    <div style={{fontSize:"24px",fontWeight:700,color:C.navy,marginBottom:"28px"}}>Strategic performance</div>
+    <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(kpis.length,5)},1fr)`,gap:"12px",marginBottom:"28px"}}>
+      {kpis.map((k,i)=>{const p=k.target_value>0?Math.round((k.actual_value/k.target_value)*100):0;const cl=p>=100?C.teal:p>=70?C.blue:"#D97706";
+        return<div key={i} style={{borderTop:`3px solid ${cl}`,padding:"16px 0",textAlign:"center"}}>
+          <div style={{fontSize:"28px",fontWeight:700,color:C.navy}}>{p}%</div>
+          <div style={{fontSize:"10px",color:C.grey,marginTop:"2px"}}>{k.actual_value} / {k.target_value}</div>
+          <div style={{fontSize:"12px",color:C.navy,marginTop:"6px"}}>{k.kpi_name}</div>
+        </div>})}
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"20px"}}>
+      <div style={{borderTop:"3px solid "+C.teal,padding:"16px 0"}}>
+        <div style={{fontSize:"10px",color:C.grey,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"12px"}}>Actions — {as.t} total</div>
+        <div style={{display:"flex",height:"6px",marginBottom:"10px"}}>{as.c>0&&<div style={{width:`${(as.c/as.t)*100}%`,background:C.teal}}/>}{as.p>0&&<div style={{width:`${(as.p/as.t)*100}%`,background:C.blue}}/>}{as.n>0&&<div style={{width:`${(as.n/as.t)*100}%`,background:C.mgrey}}/>}</div>
+        <div style={{display:"flex",gap:"12px",fontSize:"11px",color:C.grey}}><span>{as.c} complete</span><span>{as.p} active</span><span>{as.n} pending</span></div>
+      </div>
+      <div style={{borderTop:"3px solid "+C.blue,padding:"16px 0"}}>
+        <div style={{fontSize:"10px",color:C.grey,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"12px"}}>Objectives</div>
+        {obj.map((o,i)=>{const s=sc(o.status);return<div key={i} style={{display:"flex",alignItems:"center",gap:"8px",padding:"5px 0",borderBottom:i<obj.length-1?"1px solid #F7F7F7":"none"}}>
+          <span className={`tag tag-${s}`} style={{fontSize:"10px",padding:"1px 6px"}}>{o.status}</span>
+          <span style={{fontSize:"12px",flex:1}}>{o.objective}</span>
+        </div>})}
+      </div>
+    </div>
+  </div>);
+}
+
+// ═══ APP ═══
+function App(){
+  const[tab,setTab]=useState("graph");const[sel,setSel]=useState(null);const[ti,setTi]=useState(null);
+  const[splitPct,setSplitPct]=useState(50);const[dragging,setDragging]=useState(false);
+  const openT=t=>{setSel(null);setTi(t);setTab("tables")};
+  const tabs=[{k:"graph",l:"Strategic Map"},{k:"tables",l:"Tables"},{k:"dashboard",l:"Dashboard"}];
+
+  const onDragStart=useCallback((e)=>{e.preventDefault();setDragging(true)},[]);
+  useEffect(()=>{
+    if(!dragging)return;
+    const onMove=(e)=>{const pct=(e.clientX/window.innerWidth)*100;setSplitPct(Math.max(25,Math.min(75,pct)))};
+    const onUp=()=>setDragging(false);
+    window.addEventListener("mousemove",onMove);window.addEventListener("mouseup",onUp);
+    return()=>{window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp)};
+  },[dragging]);
+
+  return(<div onClick={()=>setSel(null)} style={{background:"#fff",minHeight:"100vh"}}>
+    <div style={{position:"fixed",top:0,left:0,right:0,zIndex:100,background:"#ffffffee",backdropFilter:"blur(8px)",borderBottom:"1px solid #D9D9D9"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 32px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
+          <span style={{fontSize:"14px",fontWeight:700,color:C.navy,letterSpacing:"0.02em"}}>Catalyst DMS</span>
+          <span style={{color:C.mgrey}}>|</span>
+          <span style={{fontSize:"12px",color:C.grey}}>Enterprise</span>
+          <ConnBadge/>
+        </div>
+        <div style={{display:"flex",gap:"2px"}}>
+          {tabs.map(t=><button key={t.k} onClick={e=>{e.stopPropagation();setTab(t.k);setSel(null)}} style={{background:tab===t.k?C.navy:"transparent",border:"none",cursor:"pointer",padding:"7px 16px",fontSize:"12px",fontWeight:tab===t.k?700:400,color:tab===t.k?"#fff":C.grey,letterSpacing:"0.02em",transition:"all 0.15s"}}>{t.l}</button>)}
+        </div>
+      </div>
+    </div>
+    <div style={{paddingTop:"52px",display:"flex",height:"calc(100vh - 52px)",userSelect:dragging?"none":"auto"}}>
+      {tab==="graph"&&<div style={{flex:sel?`0 0 ${splitPct}%`:"1",overflow:"auto",transition:dragging?"none":"flex 0.3s ease"}}><GraphView selected={sel} setSelected={setSel}/></div>}
+      {tab==="graph"&&sel&&<>
+        <div onMouseDown={onDragStart} style={{width:"6px",cursor:"col-resize",background:dragging?C.blue:"#D9D9D9",flexShrink:0,transition:"background 0.15s",position:"relative",zIndex:10}}>
+          <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:"2px",height:"32px",background:dragging?"#fff":"#B0B0B0",borderRadius:"1px"}}/>
+        </div>
+        <div style={{flex:`0 0 calc(${100-splitPct}% - 6px)`,overflow:"hidden",transition:dragging?"none":"flex 0.3s ease"}}><AnalysisPanel nodeId={sel} onClose={()=>setSel(null)} onOpenInTables={openT}/></div>
+      </>}
+      {tab==="tables"&&<div style={{flex:1,overflow:"hidden"}}><TablesTab initialTable={ti}/></div>}
+      {tab==="dashboard"&&<div style={{flex:1,overflow:"auto"}}><Dashboard/></div>}
+    </div>
+    {tab==="graph"&&<div style={{position:"fixed",bottom:"20px",left:"50%",transform:"translateX(-50%)",display:"flex",alignItems:"center",gap:"20px",fontSize:"10px",color:C.grey,background:"#fff",border:"1px solid #D9D9D9",padding:"8px 24px",zIndex:100}}>
+      {[{l:"Diagnose",c:"#E8532E"},{l:"Define",c:"#F59E0B"},{l:"Ambition",c:C.teal},{l:"Design",c:"#D97706"},{l:"Structure",c:C.blue},{l:"Deploy",c:C.blue},{l:"Deliver",c:C.teal},{l:"Govern",c:"#6366f1"}].map((p,i)=>
+        <span key={i} style={{display:"flex",alignItems:"center",gap:"4px"}}><span style={{width:"8px",height:"8px",background:p.c,display:"inline-block"}}></span>{p.l}</span>
+      )}
+    </div>}
+  </div>);
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
