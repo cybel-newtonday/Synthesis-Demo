@@ -1,0 +1,1487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Synthesis</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #ffffff; overflow-x: hidden; font-family: 'Helvetica Neue', Arial, sans-serif; color: #051C2C; -webkit-font-smoothing: antialiased; }
+  @keyframes panelIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  @keyframes itemIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .grid { width: 100%; border-collapse: collapse; }
+  .grid th { position: sticky; top: 0; z-index: 2; background: #f7f7f7; border-bottom: 1px solid #d9d9d9; padding: 8px 14px; font-size: 11px; font-weight: 700; color: #898989; text-transform: uppercase; letter-spacing: 0.04em; text-align: left; white-space: nowrap; }
+  .grid td { padding: 8px 14px; border-bottom: 1px solid #f2f2f2; font-size: 13px; color: #051C2C; vertical-align: middle; }
+  .grid tr:hover td { background: #fafafa; }
+  .tag { display: inline-block; padding: 1px 8px; font-size: 11px; font-weight: 600; }
+  .tag-ok { background: #E5F5F0; color: #00806A; }
+  .tag-warn { background: #FFF4E5; color: #92400e; }
+  .tag-risk { background: #FDECEC; color: #B91C1C; }
+  .tag-neutral { background: #F2F2F2; color: #555; }
+  .uuid { font-size: 11px; color: #B0B0B0; font-family: 'SF Mono', Consolas, monospace; }
+  .empty { color: #D9D9D9; }
+  .truncate { display: inline-block; word-break: break-word; }
+  .grid .truncate { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  .grid .truncate.expanded { max-width: none; white-space: normal; overflow: visible; }
+
+  .rd-row { display: flex; min-height: 44px; border-bottom: 1px solid #F7F7F7; }
+  .rd-row:hover { background: #FAFAFA; }
+  .rd-label { width: 180px; flex-shrink: 0; padding: 12px 20px; font-size: 11px; color: #898989; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+  .rd-val { flex: 1; padding: 10px 20px; font-size: 13px; color: #051C2C; line-height: 1.6; cursor: text; }
+  .rd-val:hover { background: #F7F7F7; }
+
+  .btn { padding: 6px 14px; border: 1px solid #D9D9D9; background: #fff; cursor: pointer; font-size: 11px; font-weight: 600; color: #051C2C; letter-spacing: 0.02em; display: inline-flex; align-items: center; gap: 4px; transition: all 0.15s; }
+  .btn:hover { background: #F7F7F7; border-color: #B0B0B0; }
+  .btn-fill { background: #051C2C; color: #fff; border-color: #051C2C; }
+  .btn-fill:hover { background: #0A2940; }
+  .btn-del { color: #B91C1C; border-color: #FDECEC; }
+  .btn-del:hover { background: #FDECEC; }
+  .btn-ghost { border: none; background: none; }
+  .btn-ghost:hover { background: #F2F2F2; }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; font-size: 10px; font-weight: 700; letter-spacing: 0.03em; }
+  .badge-live { background: #E5F5F0; color: #00806A; }
+  .badge-demo { background: #FFF4E5; color: #92400e; }
+
+  .sb-item { padding: 8px 20px; cursor: pointer; font-size: 13px; color: #898989; transition: all 0.1s; border-left: 2px solid transparent; }
+  .sb-item:hover { background: #F7F7F7; color: #051C2C; }
+  .sb-item.active { background: #F2F8FF; border-left-color: #0070AD; color: #051C2C; font-weight: 600; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+const C = { navy:"#051C2C", teal:"#00BFB3", blue:"#0070AD", light:"#A0D8EF", red:"#E8532E", grey:"#898989", lgrey:"#F2F2F2", mgrey:"#D9D9D9", white:"#FFFFFF" };
+const PAL = [C.teal, C.blue, C.navy, C.light];
+
+// ═══ SUPABASE ═══
+const SUPABASE_URL = "https://nhervuqwpxlihhmkevvk.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZXJ2dXF3cHhsaWhobWtldnZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQzODAxODksImV4cCI6MjA1OTk1NjE4OX0.Lx98G5FHy5ek1jsfJaYunzWXo8d-vduIatc-IxAFwm4";
+const ORG_ID = "b8c7a8c9-e1d2-4f5e-8a9b-1c2d3e4f5a6b";
+const SCHEMA = "catalyst";
+const sb = {
+  _h(){return{"apikey":SUPABASE_ANON_KEY,"Authorization":`Bearer ${SUPABASE_ANON_KEY}`,"Content-Type":"application/json","Prefer":"return=representation","Accept-Profile":SCHEMA,"Content-Profile":SCHEMA}},
+  async select(t,o={}){const p=new URLSearchParams();if(o.eq)Object.entries(o.eq).forEach(([k,v])=>p.append(k,`eq.${v}`));if(o.order)p.append("order",o.order);if(o.limit)p.append("limit",o.limit);const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${p}`,{headers:this._h()});if(!r.ok)throw new Error(r.status);return r.json()},
+  async insert(t,row){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}`,{method:"POST",headers:this._h(),body:JSON.stringify(row)});if(!r.ok)throw new Error(r.status);return r.json()},
+  async update(t,id,u){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}`,{method:"PATCH",headers:this._h(),body:JSON.stringify(u)});if(!r.ok)throw new Error(r.status);return r.json()},
+  async remove(t,id){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}`,{method:"DELETE",headers:this._h()});if(!r.ok)throw new Error(r.status);return true},
+  async ping(){try{const r=await fetch(`${SUPABASE_URL}/rest/v1/od_synthesis?limit=1`,{headers:this._h(),signal:AbortSignal.timeout(5000)});return r.ok}catch{return false}}
+};
+
+function useData(t){
+  const[data,setData]=useState([]);const[loading,setLoading]=useState(true);const[isLive,setIsLive]=useState(false);
+  const refresh=useCallback(async()=>{
+    if(!t){setLoading(false);return;}
+    try{setLoading(true);const r=await sb.select(t,{eq:{org_id:ORG_ID}});console.log(`[useData] ${t}: ${r?r.length:0} rows`);setData(r||[]);setIsLive(true)}
+    catch(e){console.warn(`[useData] ${t} failed:`,e.message);setIsLive(false);setData([])}
+    finally{setLoading(false)}
+  },[t]);
+  useEffect(()=>{refresh()},[refresh]);return{data,loading,isLive,refresh};
+}
+
+// ═══ FIELD TYPE ═══
+function ft(k,v){if(k==="id"||k==="org_id")return"pk";if(k.endsWith("_id")||k.endsWith("_by_id"))return"fk";if(k.endsWith("_ids")||Array.isArray(v))return"arr";if(k.includes("date")||k==="start"||k==="target")return"date";if(k==="status"||k==="completion_status"||k==="record_status"||k==="level_of_risk")return"status";if(typeof v==="boolean"||k.startsWith("is_")||k.startsWith("for_")||k==="sample_data")return"bool";if(typeof v==="number"||k.includes("amount")||k.includes("value")||k.includes("score")||k==="fiscal_year"||k==="airtable_id")return"num";return"text"}
+function sc(v){if(!v)return"neutral";const s=String(v).toLowerCase();if(s.includes("complete")||s.includes("ahead")||s.includes("active")||s.includes("approved"))return"ok";if(s.includes("progress")||s.includes("on track")||s.includes("planning")||s.includes("scheduled"))return"warn";if(s.includes("not started")||s.includes("behind")||s.includes("high")||s.includes("open"))return"risk";return"neutral"}
+
+function Cell({k,v}){
+  const[expanded,setExpanded]=useState(false);
+  if(v===null||v===undefined||v==="")return<span className="empty">—</span>;
+  const t=ft(k,v);
+  if(t==="pk"||t==="fk")return<span className="uuid" title={String(v)}>{String(v).slice(0,8)}…</span>;
+  if(t==="arr")return<span style={{fontSize:"11px",color:C.grey}}>{Array.isArray(v)?v.length+" items":"—"}</span>;
+  if(t==="status")return<span className={`tag tag-${sc(v)}`}>{String(v)}</span>;
+  if(t==="bool")return<span>{v===true?"Yes":v===false?"No":String(v)}</span>;
+  if(t==="date")return<span style={{fontVariantNumeric:"tabular-nums"}}>{String(v).slice(0,10)}</span>;
+  if(t==="num")return<span style={{fontVariantNumeric:"tabular-nums"}}>{String(v)}</span>;
+  return<span className={`truncate${expanded?" expanded":""}`} title={String(v)} onClick={(e)=>{e.stopPropagation();setExpanded(!expanded)}}>{String(v)}</span>;
+}
+
+// ═══ FK RESOLUTION ═══
+const FK_MAP={
+  company_id:{t:"od_companies",d:"company_name"},strategy_id:{t:"od_strategy",d:"strategy_name"},
+  objective_id:{t:"od_objectives",d:"objective"},assignee_id:{t:"od_users",d:"full_name"},
+  owner_id:{t:"od_users",d:"full_name"},completed_by_id:{t:"od_users",d:"full_name"},
+  control_owner_id:{t:"od_users",d:"full_name"},reviewer_id:{t:"od_users",d:"full_name"},
+  supervisor_id:{t:"od_users",d:"full_name"},full_name_id:{t:"od_users",d:"full_name"},
+  manager_id:{t:"od_users",d:"full_name"},project_owner_id:{t:"od_users",d:"full_name"},
+  role_id:{t:"od_roles",d:"role_name"},organisational_unit_id:{t:"od_org_units",d:"organisationalunit"},
+  department_id:{t:"od_org_units",d:"organisationalunit"},project_type_id:{t:"od_project_types",d:"project_types"},
+  country_id:{t:"od_countries",d:"country_name"},region_id:{t:"od_regions",d:"region"},
+  currency_id:{t:"od_currencies",d:"currency_name"},budget_id:{t:"od_budgets",d:"budget_name"},
+  related_decision_id:{t:"od_nine_decisions",d:"decision_area"},user_id:{t:"od_users",d:"full_name"},
+};
+const SYS_FIELDS=new Set(["id","org_id","created_at","updated_at","sample_data","created_by","updated_by","airtable_id"]);
+const STATUS_OPTS={status:["Complete","In Progress","On Track","Planning","Not Started","Behind","Ahead"],completion_status:["Complete","In Progress","Not Started"],record_status:["active","archived","draft"],level_of_risk:["Low","Medium","High","Critical"],impact_rating:["Low","Medium","High","Critical"]};
+
+function isEditable(k,v){
+  if(SYS_FIELDS.has(k))return false;
+  if(k.endsWith("_id")||k.endsWith("_by_id"))return false; // FKs need picker not free text
+  if(k.endsWith("_ids"))return false; // arrays need multi-picker
+  return true;
+}
+
+// Linked record preview card
+function LinkedCard({fieldKey,val}){
+  const[rec,setRec]=useState(null);const[loading,setLoading]=useState(true);const[expanded,setExpanded]=useState(false);
+  const fkInfo=FK_MAP[fieldKey];
+  useEffect(()=>{
+    if(!val||!fkInfo){setLoading(false);return}
+    (async()=>{try{
+      const url=`${SUPABASE_URL}/rest/v1/${fkInfo.t}?id=eq.${val}&limit=1`;
+      const r=await fetch(url,{headers:sb._h()});
+      if(r.ok){const d=await r.json();if(d&&d[0])setRec(d[0])}
+    }catch(e){console.warn("LinkedCard fetch:",e)}finally{setLoading(false)}})();
+  },[val]);
+
+  if(!val)return<span className="empty">—</span>;
+  if(loading)return<span style={{fontSize:"11px",color:C.grey}}>Loading…</span>;
+  if(!rec)return<span className="uuid" title={String(val)}>{String(val).slice(0,8)}…</span>;
+
+  const displayVal=rec[fkInfo?.d]||Object.values(rec).find(v=>typeof v==="string"&&v.length>1&&v.length<100)||"Record";
+  const pretty=k=>k.replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase());
+  const showFields=Object.keys(rec).filter(k=>!SYS_FIELDS.has(k)&&rec[k]!==null&&rec[k]!==undefined&&rec[k]!=="");
+
+  return(
+    <div style={{border:"1px solid #E8E8E8",padding:"10px 14px",cursor:"pointer",transition:"all 0.15s",background:expanded?"#FAFAFA":"#fff"}} onClick={()=>setExpanded(!expanded)}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div>
+          <div style={{fontSize:"12px",fontWeight:700,color:C.navy}}>{displayVal}</div>
+          <div style={{fontSize:"9px",color:C.grey,marginTop:"1px"}}>{fkInfo?.t} record</div>
+        </div>
+        <span style={{fontSize:"10px",color:C.grey}}>{expanded?"Collapse":"Expand"}</span>
+      </div>
+      {expanded&&<div style={{marginTop:"10px",paddingTop:"10px",borderTop:"1px solid #F2F2F2"}}>
+        {showFields.slice(0,8).map(k=>(
+          <div key={k} style={{display:"flex",padding:"4px 0",borderBottom:"1px solid #F7F7F7"}}>
+            <div style={{width:"120px",fontSize:"10px",color:C.grey,fontWeight:600}}>{pretty(k)}</div>
+            <div style={{flex:1,fontSize:"11px",color:C.navy}}>
+              {k.endsWith("_id")?<span className="uuid">{String(rec[k]).slice(0,8)}…</span>
+              :typeof rec[k]==="boolean"?(rec[k]?"Yes":"No")
+              :String(rec[k]).length>80?String(rec[k]).slice(0,80)+"…"
+              :String(rec[k])}
+            </div>
+          </div>
+        ))}
+      </div>}
+    </div>
+  );
+}
+
+// Linked records array preview
+function LinkedArrayCards({fieldKey,vals}){
+  const[recs,setRecs]=useState([]);const[loading,setLoading]=useState(true);
+  const baseName=fieldKey.replace(/_ids$/,"_id");
+  const fkInfo=FK_MAP[baseName];
+  useEffect(()=>{
+    if(!vals||!vals.length||!fkInfo){setLoading(false);return}
+    (async()=>{try{
+      const results=[];
+      for(const id of vals.slice(0,5)){try{
+        const url=`${SUPABASE_URL}/rest/v1/${fkInfo.t}?id=eq.${id}&limit=1`;
+        const r=await fetch(url,{headers:sb._h()});
+        if(r.ok){const d=await r.json();if(d&&d[0])results.push(d[0])}
+      }catch{}}
+      setRecs(results);
+    }catch(e){console.warn(e)}finally{setLoading(false)}})();
+  },[vals]);
+
+  if(!vals||!vals.length)return<span className="empty">—</span>;
+  if(loading)return<span style={{fontSize:"11px",color:C.grey}}>Loading {vals.length} records…</span>;
+
+  return(<div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
+    {recs.map((r,i)=>{
+      const d=r[fkInfo?.d]||Object.values(r).find(v=>typeof v==="string"&&v.length>1)||"Record";
+      return<div key={i} style={{border:"1px solid #E8E8E8",padding:"8px 12px",background:"#fff"}}>
+        <div style={{fontSize:"11px",fontWeight:600,color:C.navy}}>{d}</div>
+        <div style={{fontSize:"9px",color:C.grey}}>{fkInfo?.t}</div>
+      </div>;
+    })}
+    {vals.length>5&&<div style={{fontSize:"10px",color:C.grey}}>+{vals.length-5} more</div>}
+  </div>);
+}
+
+// ═══ RECORD DETAIL (Airtable-style form) ═══
+function RecordDetail({record,allRecords,tableName,onClose,onSave,onNav}){
+  const[ef,setEf]=useState(null);const[ev,setEv]=useState("");const[saving,setSaving]=useState(false);const ref=useRef(null);
+  useEffect(()=>{if(ref.current)ref.current.focus()},[ef]);if(!record)return null;
+  const fields=Object.keys(record);const idx=allRecords.findIndex(r=>r.id===record.id);
+  const title=record[fields.find(f=>!SYS_FIELDS.has(f)&&typeof record[f]==="string"&&record[f])]||"Record";
+  const save=async(f)=>{setSaving(true);try{await sb.update(tableName,record.id,{[f]:ev});onSave&&onSave()}catch(e){console.error(e)}setEf(null);setSaving(false)};
+  const pretty=k=>k.replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase());
+
+  // Group fields: title field, content fields, FK fields, system fields
+  const titleField=fields.find(f=>!SYS_FIELDS.has(f)&&typeof record[f]==="string"&&record[f]);
+  const contentFields=fields.filter(f=>!SYS_FIELDS.has(f)&&f!==titleField&&!f.endsWith("_id")&&!f.endsWith("_by_id")&&!f.endsWith("_ids"));
+  const fkFields=fields.filter(f=>!SYS_FIELDS.has(f)&&(f.endsWith("_id")||f.endsWith("_by_id"))&&f!=="org_id");
+  const arrFields=fields.filter(f=>!SYS_FIELDS.has(f)&&f.endsWith("_ids"));
+  const sysFields=fields.filter(f=>SYS_FIELDS.has(f));
+
+  const renderField=(field,i)=>{
+    const v=record[field];const t=ft(field,v);const isEd=ef===field;
+    const editable=isEditable(field,v);const isFk=t==="fk";const isArr=t==="arr";
+    const isStatus=STATUS_OPTS[field];const isLong=typeof v==="string"&&v.length>100;
+    const isSys=SYS_FIELDS.has(field);
+
+    return(
+      <div key={field} className="rd-row" style={{animation:`itemIn 0.08s ease ${i*0.01}s both`}}>
+        <div className="rd-label">
+          {pretty(field)}
+          {isSys&&<span style={{fontSize:"8px",color:C.mgrey,display:"block",fontWeight:400,textTransform:"none",letterSpacing:0}}>System</span>}
+        </div>
+        <div className="rd-val" style={{cursor:editable?"text":"default"}} onClick={()=>{if(editable&&!isEd){setEf(field);setEv(v||"")}}}>
+          {/* Editing mode */}
+          {isEd&&isStatus?(
+            <select ref={ref} value={ev} onChange={e=>{setEv(e.target.value);}} onBlur={()=>save(field)} style={{width:"100%",border:"1px solid "+C.blue,padding:"6px 8px",fontSize:"13px",fontFamily:"inherit",outline:"none",background:"#fff"}}>
+              <option value="">— Select —</option>
+              {isStatus.map(o=><option key={o} value={o}>{o}</option>)}
+            </select>
+          ):isEd&&isLong?(
+            <textarea ref={ref} value={ev} onChange={e=>setEv(e.target.value)} onBlur={()=>save(field)} onKeyDown={e=>{if(e.key==="Escape")setEf(null)}} style={{width:"100%",minHeight:"80px",border:"1px solid "+C.blue,padding:"8px",fontSize:"13px",fontFamily:"inherit",outline:"none",lineHeight:1.5}} rows={4}/>
+          ):isEd&&t==="date"?(
+            <input ref={ref} type="date" value={ev?String(ev).slice(0,10):""} onChange={e=>setEv(e.target.value)} onBlur={()=>save(field)} style={{border:"1px solid "+C.blue,padding:"6px 8px",fontSize:"13px",fontFamily:"inherit",outline:"none"}}/>
+          ):isEd&&t==="num"?(
+            <input ref={ref} type="number" value={ev} onChange={e=>setEv(e.target.value)} onBlur={()=>save(field)} onKeyDown={e=>{if(e.key==="Enter")save(field);if(e.key==="Escape")setEf(null)}} style={{width:"100%",border:"1px solid "+C.blue,padding:"6px 8px",fontSize:"13px",fontFamily:"inherit",outline:"none"}}/>
+          ):isEd&&t==="bool"?(
+            <label style={{display:"flex",alignItems:"center",gap:"8px",cursor:"pointer",fontSize:"13px"}}><input ref={ref} type="checkbox" checked={ev===true||ev==="true"} onChange={e=>{setEv(e.target.checked);save(field)}} style={{width:"16px",height:"16px"}}/>{ev?"Yes":"No"}</label>
+          ):isEd?(
+            <input ref={ref} value={ev} onChange={e=>setEv(e.target.value)} onBlur={()=>save(field)} onKeyDown={e=>{if(e.key==="Enter")save(field);if(e.key==="Escape")setEf(null)}} style={{width:"100%",border:"1px solid "+C.blue,padding:"6px 8px",fontSize:"13px",fontFamily:"inherit",outline:"none"}}/>
+          )
+          :isFk?(<LinkedCard fieldKey={field} val={v}/>)
+          :isArr&&Array.isArray(v)?(<LinkedArrayCards fieldKey={field} vals={v}/>)
+          :isStatus&&v?(<span className={`tag tag-${sc(v)}`} style={{cursor:editable?"pointer":"default"}}>{String(v)}</span>)
+          :isSys?(<span style={{fontSize:"12px",color:C.mgrey}}>{v!==null&&v!==undefined?String(v):"—"}</span>)
+          :(<Cell k={field} v={v}/>)
+          }
+        </div>
+      </div>
+    );
+  };
+
+  return(
+    <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:0,right:0,bottom:0,width:"560px",background:"#fff",borderLeft:"1px solid #D9D9D9",zIndex:250,display:"flex",flexDirection:"column",boxShadow:"-2px 0 20px rgba(0,0,0,0.06)",animation:"panelIn 0.2s ease"}}>
+      {/* Nav */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 20px",borderBottom:"1px solid #F2F2F2",flexShrink:0}}>
+        <div style={{display:"flex",gap:"4px",alignItems:"center"}}>
+          <button className="btn btn-ghost" onClick={()=>idx>0&&onNav(allRecords[idx-1])} style={{opacity:idx>0?1:0.3,padding:"4px 6px",fontSize:"11px"}}>Prev</button>
+          <button className="btn btn-ghost" onClick={()=>idx<allRecords.length-1&&onNav(allRecords[idx+1])} style={{opacity:idx<allRecords.length-1?1:0.3,padding:"4px 6px",fontSize:"11px"}}>Next</button>
+          <span style={{fontSize:"11px",color:C.grey,marginLeft:"8px"}}>{idx+1} of {allRecords.length}</span>
+        </div>
+        <button className="btn btn-ghost" onClick={onClose} style={{fontSize:"14px",padding:"4px 8px"}}>Close</button>
+      </div>
+
+      {/* Title */}
+      <div style={{padding:"24px 28px 20px",borderBottom:"1px solid #F2F2F2"}}>
+        <div style={{fontSize:"10px",color:C.grey,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"6px"}}>{tableName}</div>
+        <div style={{fontSize:"20px",fontWeight:700,color:C.navy,lineHeight:1.3}}>{String(title)}</div>
+      </div>
+
+      {/* Fields grouped by type */}
+      <div style={{flex:1,overflowY:"auto"}}>
+        {/* Content fields first */}
+        {contentFields.length>0&&<div>
+          {contentFields.map((f,i)=>renderField(f,i))}
+        </div>}
+
+        {/* Linked records section */}
+        {(fkFields.length>0||arrFields.length>0)&&<div>
+          <div style={{padding:"12px 28px 4px",fontSize:"9px",color:C.grey,textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:700,borderTop:"1px solid #F2F2F2"}}>Linked records</div>
+          {fkFields.map((f,i)=>renderField(f,contentFields.length+i))}
+          {arrFields.map((f,i)=>renderField(f,contentFields.length+fkFields.length+i))}
+        </div>}
+
+        {/* System fields at the bottom */}
+        {sysFields.length>0&&<div>
+          <div style={{padding:"12px 28px 4px",fontSize:"9px",color:C.mgrey,textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:700,borderTop:"1px solid #F2F2F2"}}>System</div>
+          {sysFields.map((f,i)=>renderField(f,contentFields.length+fkFields.length+arrFields.length+i))}
+        </div>}
+      </div>
+      {saving&&<div style={{padding:"8px 28px",fontSize:"11px",color:C.blue,borderTop:"1px solid #F2F2F2"}}>Saving…</div>}
+    </div>);
+}
+
+// ═══ GRID ═══
+function Grid({tableName,data,loading,isLive,refresh,onExpand,compact}){
+  const[ec,setEc]=useState(null);const[ev,setEv]=useState("");const[adding,setAdding]=useState(false);const[nr,setNr]=useState({});const[saving,setSaving]=useState(false);const iref=useRef(null);
+  useEffect(()=>{if(iref.current)iref.current.focus()},[ec]);
+  const hide=new Set(["id","org_id","created_at","updated_at","sample_data"]);
+  const cols=data.length>0?Object.keys(data[0]).filter(k=>!hide.has(k)):[];
+  const pretty=k=>k.replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase());
+  const saveEd=async()=>{if(!ec)return;setSaving(true);try{await sb.update(tableName,ec.rid,{[ec.col]:ev});refresh()}catch(e){console.error(e)}setEc(null);setSaving(false)};
+  const addRow=async()=>{setSaving(true);try{await sb.insert(tableName,{org_id:ORG_ID,record_status:"active",sample_data:true,...nr});refresh();setAdding(false);setNr({})}catch(e){console.error(e)}setSaving(false)};
+  const del=async(id)=>{if(!window.confirm("Delete this record?"))return;try{await sb.remove(tableName,id);refresh()}catch(e){console.error(e)}};
+
+  return(<div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:compact?"4px 0":"8px 0",marginBottom:"8px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+        <span className={`badge badge-${isLive?"live":"demo"}`}>{isLive?"Live":"Demo"}</span>
+        <span style={{fontSize:"12px",color:C.grey}}>{data.length} record{data.length!==1?"s":""}</span>
+      </div>
+      <div style={{display:"flex",gap:"6px"}}>
+        <button className="btn" onClick={refresh}>Refresh</button>
+        <button className="btn btn-fill" onClick={()=>{setAdding(true);setNr({})}}>Add record</button>
+      </div>
+    </div>
+    {loading?<div style={{textAlign:"center",padding:"40px",color:C.grey,fontSize:"13px"}}>Loading…</div>
+    :<div style={{maxHeight:compact?"280px":"calc(100vh-160px)",overflowY:"auto",overflowX:"auto",border:"1px solid #D9D9D9"}}>
+      <table className="grid">
+        <thead><tr>
+          <th style={{width:"44px"}}>#</th>
+          {cols.map(c=><th key={c}>{pretty(c)}</th>)}
+          <th style={{width:"80px"}}></th>
+        </tr></thead>
+        <tbody>
+          {data.map((row,ri)=>(<tr key={row.id||ri} onClick={()=>onExpand&&onExpand(row)} style={{cursor:onExpand?"pointer":"default"}}>
+            <td style={{color:C.mgrey,fontSize:"11px",textAlign:"center"}}>{ri+1}</td>
+            {cols.map(c=>{const isEd=ec&&ec.rid===row.id&&ec.col===c;const canEdit=isEditable(c,row[c]);return<td key={c} onClick={e=>{e.stopPropagation();if(canEdit){setEc({rid:row.id,col:c});setEv(row[c]||"")}}}>
+              {isEd?<input ref={iref} value={ev} onChange={e=>setEv(e.target.value)} onBlur={saveEd} onKeyDown={e=>{if(e.key==="Enter")saveEd();if(e.key==="Escape")setEc(null)}} style={{width:"100%",border:"1px solid "+C.blue,padding:"4px 6px",fontSize:"13px",fontFamily:"inherit",outline:"none"}}/>
+              :<Cell k={c} v={row[c]}/>}
+            </td>})}
+            <td onClick={e=>e.stopPropagation()}><div style={{display:"flex",gap:"4px"}}>
+              {onExpand&&<button className="btn btn-ghost" onClick={()=>onExpand(row)} style={{padding:"2px 6px",fontSize:"10px"}}>Open</button>}
+              <button className="btn btn-ghost btn-del" onClick={()=>del(row.id)} style={{padding:"2px 6px",fontSize:"10px"}}>Delete</button>
+            </div></td>
+          </tr>))}
+          {adding&&<tr style={{background:"#F2F8FF"}}><td></td>
+            {cols.map(c=><td key={c}><input placeholder={pretty(c)} value={nr[c]||""} onChange={e=>setNr(p=>({...p,[c]:e.target.value}))} style={{width:"100%",border:"1px solid "+C.blue,padding:"4px 6px",fontSize:"13px",fontFamily:"inherit",outline:"none"}}/></td>)}
+            <td><div style={{display:"flex",gap:"2px"}}><button className="btn btn-fill" onClick={addRow} style={{padding:"2px 8px",fontSize:"10px"}}>Save</button><button className="btn" onClick={()=>setAdding(false)} style={{padding:"2px 8px",fontSize:"10px"}}>Cancel</button></div></td>
+          </tr>}
+        </tbody>
+      </table>
+    </div>}
+  </div>);
+}
+
+// ═══ TABLE GROUPS ═══
+const TG=[
+  {g:"Scanning",c:C.teal,t:[{k:"od_web_research",l:"Web Research"},{k:"od_industry_value_chain",l:"Value Chain"},{k:"od_stakeholder_groups",l:"Stakeholders"},{k:"od_jobs_to_be_done",l:"Jobs To Be Done"}]},
+  {g:"Strategy",c:C.blue,t:[{k:"od_synthesis",l:"Synthesis"},{k:"od_nine_decisions",l:"Steering Wheel"},{k:"od_values",l:"Values"},{k:"od_swot",l:"SWOT"},{k:"od_ambition_golden_threads",l:"Golden Threads"},{k:"od_business_model",l:"Business Model"},{k:"od_strategy",l:"Strategy"},{k:"od_habits",l:"Positive Habits"}]},
+  {g:"Execution",c:C.teal,t:[{k:"od_exec_portfolios",l:"Portfolios"},{k:"od_objectives",l:"Objectives"},{k:"od_actions",l:"Actions"},{k:"od_projects",l:"Projects"},{k:"od_kpis",l:"KPIs"},{k:"od_strategic_plans",l:"Strategic Plans"},{k:"od_plan_templates",l:"Plan Templates"}]},
+  {g:"Performance & Compliance",c:"#6366f1",t:[{k:"od_rasci",l:"RASCI"},{k:"od_cultural_health",l:"Cultural Health"},{k:"od_budgets",l:"Budgets"},{k:"od_risk_register",l:"Risk Register"},{k:"od_review_schedule",l:"Review Schedule"},{k:"od_gccs",l:"GCCs"}]},
+  {g:"Organisation",c:"#B91C1C",t:[{k:"od_companies",l:"Companies"},{k:"od_users",l:"Users"},{k:"od_roles",l:"Roles"},{k:"od_org_units",l:"Org Units"},{k:"od_employments",l:"Employments"},{k:"od_stakeholder_groups",l:"Stakeholders"}]},
+  {g:"Reference",c:C.grey,t:[{k:"od_countries",l:"Countries"},{k:"od_regions",l:"Regions"},{k:"od_currencies",l:"Currencies"},{k:"od_locations",l:"Locations"},{k:"od_project_types",l:"Project Types"}]},
+];
+
+function TablesTab({initialTable}){
+  const[at,setAt]=useState(initialTable||"od_synthesis");const[er,setEr]=useState(null);
+  const{data,loading,isLive,refresh}=useData(at);
+  useEffect(()=>{setEr(null)},[at]);
+  const info=TG.flatMap(g=>g.t).find(t=>t.k===at);
+  return(<div style={{display:"flex",height:"calc(100vh-52px)",overflow:"hidden"}}>
+    <div style={{width:"210px",borderRight:"1px solid #D9D9D9",overflowY:"auto",background:"#FAFAFA",flexShrink:0}}>
+      <div style={{padding:"20px 20px 12px",fontSize:"11px",fontWeight:700,color:C.navy,textTransform:"uppercase",letterSpacing:"0.06em"}}>Tables</div>
+      {TG.map((g,gi)=>(<div key={gi} style={{marginBottom:"8px"}}>
+        <div style={{padding:"8px 20px 4px",fontSize:"9px",fontWeight:700,color:g.c,textTransform:"uppercase",letterSpacing:"0.08em"}}>{g.g}</div>
+        {g.t.map(t=><div key={t.k} className={`sb-item ${at===t.k?"active":""}`} onClick={()=>setAt(t.k)}>{t.l}</div>)}
+      </div>))}
+    </div>
+    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{padding:"16px 28px",borderBottom:"1px solid #D9D9D9",background:"#fff",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+        <div><div style={{fontSize:"18px",fontWeight:700,color:C.navy}}>{info?.l||at}</div><div style={{fontSize:"11px",color:C.grey,marginTop:"2px"}}>{at}</div></div>
+      </div>
+      <div style={{flex:1,overflow:"auto",padding:"20px 28px"}}><Grid tableName={at} data={data} loading={loading} isLive={isLive} refresh={refresh} onExpand={r=>setEr(r)}/></div>
+    </div>
+    {er&&<RecordDetail record={er} allRecords={data} tableName={at} onClose={()=>setEr(null)} onSave={refresh} onNav={r=>setEr(r)}/>}
+  </div>);
+}
+
+// ═══ NODE → TABLE ═══
+const NT={web_research:"od_web_research",value_chain:"od_industry_value_chain",stakeholder_map:"od_stakeholder_groups",jtbd:"od_jobs_to_be_done",synthesis:"od_synthesis",nine_decisions:"od_nine_decisions",values:"od_values",swot:"od_swot",golden_threads:"od_ambition_golden_threads",business_model:"od_business_model",strategy:"od_strategy",positive_habits:"od_habits",portfolios:"od_exec_portfolios",objectives:"od_objectives",actions:"od_actions",projects:"od_projects",kpis:"od_kpis",rasci:"od_rasci",cultural_health:"od_cultural_health",reviews:"od_review_schedule",budgets_risks:"od_budgets"};
+
+// ═══ NODES — 19 nodes across 9 phases ═══
+const PUR="#7C3AED";
+const nodes={
+  // SCAN — 4 nodes, dashed, continuous input (#0EA5A2 scan teal)
+  web_research:{id:"web_research",label:"Web Research",color:"#0EA5A2",x:80,y:60,phase:"Scan",dashed:true,analysis:{insight:"Generic harvesting of knowledge from the web — competitor sites, market trends, emerging technologies. External intelligence that prevents strategy from being written in a vacuum.",keyQuestion:"What external forces could disrupt our market in the next 12 months?"},children:[]},
+  value_chain:{id:"value_chain",label:"Value Chain",color:"#0EA5A2",x:280,y:60,phase:"Scan",dashed:true,analysis:{insight:"Maps the industry ecosystem — the relationships and value give-to-get between stakeholders in a marketplace. Understanding where you sit in the chain reveals opportunities for integration or partnership.",keyQuestion:"Where do we sit in the value chain, and where could we move to create more value?"},children:[]},
+  stakeholder_map:{id:"stakeholder_map",label:"Stakeholder Map",color:"#0EA5A2",x:480,y:60,phase:"Scan",dashed:true,analysis:{insight:"Identifies all audience groups the company interacts with — shareholders, customers, suppliers, regulators, employees. Each stakeholder group has expectations the system must serve.",keyQuestion:"Who do we serve, and what does each stakeholder group want from us?"},children:[]},
+  jtbd:{id:"jtbd",label:"Jobs To Be Done",color:"#0EA5A2",x:680,y:60,phase:"Scan",dashed:true,analysis:{insight:"For each stakeholder audience, defines the specific job the company does for them. A job statement has three parts: verb + object + describer. Different audiences have different jobs — never generic.",keyQuestion:"For each audience, what specific job do we do for them?"},children:[]},
+
+  // DIAGNOSE (#E8532E)
+  synthesis:{id:"synthesis",label:"Synthesis",color:"#E8532E",x:400,y:200,phase:"Diagnose",analysis:{insight:"Diagnoses where the organisation is today — market position, competitive landscape, capacity gaps. Fed by all horizon scanning inputs. Everything cascades from this honest assessment.",keyQuestion:"What is the honest truth about where we are versus where we need to be?"},children:["nine_decisions"]},
+
+  // DEFINE (#F59E0B)
+  nine_decisions:{id:"nine_decisions",label:"Steering Wheel",color:"#F59E0B",x:400,y:320,phase:"Define",analysis:{insight:"The kybernan steering wheel — nine foundational decisions that formalise governance by design. Purpose, Vision, Mission, Values, Positioning, Revenue Model, Growth, Capabilities, Culture. You steer the organisation before you build it.",keyQuestion:"What specific capabilities does the team need that they don't have today?"},children:["golden_threads","values","swot"]},
+
+  // AMBITION (#10856B ambition green)
+  values:{id:"values",label:"Values",color:"#10856B",x:130,y:460,phase:"Ambition",cultural:true,analysis:{insight:"Core beliefs that define what matters. Must be distinctive and testable. Values without habits are just posters on a wall — they must drive downstream Positive Habits.",keyQuestion:"How will you measure whether people are actually living these values?"},children:["positive_habits"]},
+  golden_threads:{id:"golden_threads",label:"Golden Threads",color:"#10856B",x:400,y:460,phase:"Ambition",analysis:{insight:"The strategic ambitions everything else must deliver. Define WHAT we want to achieve. Business model and strategy define HOW. Every objective must trace to a thread.",keyQuestion:"Which thread breaks if you had to deprioritise one?"},children:["business_model","strategy"]},
+  swot:{id:"swot",label:"SWOT",color:"#10856B",x:670,y:460,phase:"Ambition",analysis:{insight:"Reveals competitive advantages and structural vulnerabilities. The window of opportunity may be narrowing.",keyQuestion:"Which weakness, if unaddressed, could neutralise your biggest strength?"},children:[]},
+
+  // DESIGN (#D97706)
+  business_model:{id:"business_model",label:"Business Model",color:"#D97706",x:130,y:600,phase:"Design",analysis:{insight:"Describes how the organisation creates, delivers, and captures value. Links to Jobs To Be Done from scanning and to Synthesis diagnosis.",keyQuestion:"Does the model scale to meet the golden thread ambitions?"},children:[]},
+  strategy:{id:"strategy",label:"Strategy",color:"#D97706",x:400,y:600,phase:"Design",analysis:{insight:"Sequences priorities. The risk is trying to do everything simultaneously. Must be resourced for year-1 delivery.",keyQuestion:"Is the team resourced to execute year-1 priorities?"},children:["portfolios"]},
+  positive_habits:{id:"positive_habits",label:"Positive Habits",color:PUR,x:670,y:600,phase:"Design",cultural:true,analysis:{insight:"Enforced daily behaviours that produce best outcomes, linked to each value. If you don't design habits, you inherit the lowest common denominator. Measured as improving or declining, not exact metrics.",keyQuestion:"If we defined 10 things this business should do well every day, are we doing them?"},children:["cultural_health"]},
+
+  // STRUCTURE (#2251FF)
+  portfolios:{id:"portfolios",label:"Portfolios",color:"#2251FF",x:400,y:740,phase:"Structure",analysis:{insight:"Portfolios organise the enterprise by strategic theme, not department. Each owns objectives, capabilities, resources, people. Replaces departmental silos that cause strategic drift. RASCI assigned at this level.",keyQuestion:"Are the right people accountable — and do they have authority?"},children:["objectives"]},
+
+  // DEPLOY (#1E40AF)
+  objectives:{id:"objectives",label:"Objectives",color:"#1E40AF",x:400,y:860,phase:"Deploy",analysis:{insight:"Balanced scorecard objectives assigned to portfolios. Mapped to 4 BSC perspectives: Financial, Customer, Internal Process, Learning and Growth. Lead and lag indicators track progress.",keyQuestion:"Does every objective trace to a golden thread and a delivery mechanism?"},children:["actions","projects","kpis"]},
+
+  // DELIVER (#0D7377)
+  actions:{id:"actions",label:"Actions",color:"#0D7377",x:130,y:990,phase:"Deliver",analysis:{insight:"Discrete tasks assigned to individuals, alongside projects and procurement. One of three parallel delivery mechanisms.",keyQuestion:"Who owns the blockers?"},children:[]},
+  projects:{id:"projects",label:"Projects",color:"#0D7377",x:400,y:990,phase:"Deliver",analysis:{insight:"Budgeted initiatives delivering objectives. Each assigned to an objective and portfolio with budget and impact rating.",keyQuestion:"Is budget concentration creating delivery risk?"},children:[]},
+  kpis:{id:"kpis",label:"KPIs",color:"#0D7377",x:670,y:990,phase:"Deliver",analysis:{insight:"Target value, actual value, measurement frequency, and owner per metric. Lead and lag indicators measuring whether objectives are being achieved.",keyQuestion:"Which KPIs will miss year-end target at current velocity?"},children:[]},
+
+  // PERFORMANCE & COMPLIANCE (#6366f1)
+  rasci:{id:"rasci",label:"RASCI",color:"#6366f1",x:80,y:1120,phase:"Performance & Compliance",analysis:{insight:"Responsible, Accountable, Supportive, Consulted, Informed — assigned per portfolio, not per process. Organisations are too lazy to apply it at the process level. At portfolio level it provides clarity at the top.",keyQuestion:"Is accountability clear at portfolio level?"},children:[]},
+  cultural_health:{id:"cultural_health",label:"Cultural Health",color:PUR,x:300,y:1120,phase:"Performance & Compliance",cultural:true,analysis:{insight:"Five Smiles methodology — 5 questions scored out of 5, quarterly. Do you feel supported? Clear goals? Right resources? Emotionally supported? Have the tools? Simple north/south indicator. If declining, go back to Positive Habits.",keyQuestion:"Is our culture getting healthier or sicker?"},children:[]},
+  reviews:{id:"reviews",label:"Reviews",color:"#6366f1",x:520,y:1120,phase:"Performance & Compliance",analysis:{insight:"Review cadence and rhythm. Strategy reviews, portfolio reviews, operational reviews. The management operating system that catches slippage.",keyQuestion:"Is review cadence frequent enough to catch slippage?"},children:[]},
+  budgets_risks:{id:"budgets_risks",label:"Budgets / Risks",color:"#6366f1",x:740,y:1120,phase:"Performance & Compliance",analysis:{insight:"Financial control through budget allocation and tracking. Risk register for identifying, assessing, and mitigating strategic and operational risks.",keyQuestion:"Are budgets aligned to strategic priorities, and are top risks actively managed?"},children:[]},
+};
+const allEdges=[];Object.values(nodes).forEach(n=>n.children.forEach(c=>allEdges.push({from:n.id,to:c})));
+const NW=170,NH=54;
+function ep(f,t){const x1=f.x+NW/2,y1=f.y+NH,x2=t.x+NW/2,y2=t.y,cp=Math.abs(y2-y1)*0.5;return`M${x1} ${y1}C${x1} ${y1+cp},${x2} ${y2-cp},${x2} ${y2}`}
+
+// ═══ WEB RESEARCH — McKINSEY EXHIBITS ═══
+const CC={"Market Trends":"#2251FF","Competitive Intelligence":"#A61D68","Regulatory":"#6366f1","Technology":"#00BFB3","Market Opportunity":"#D97706"};
+const ALL_CATS=["Market Trends","Competitive Intelligence","Regulatory","Technology","Market Opportunity"];
+
+function parseNums(summary){
+  if(!summary)return[];const nums=[];
+  // Find sentence boundaries for full context
+  const getSentence=(text,idx)=>{let s=idx,e=idx;while(s>0&&text[s-1]!=="."&&text[s-1]!=="\n")s--;while(e<text.length&&text[e]!=="."&&text[e]!=="\n")e++;return text.substring(s,e+1).trim()};
+  const pcts=[...summary.matchAll(/(\d+(?:\.\d+)?)\s*%/g)];
+  pcts.forEach(m=>{const v=parseFloat(m[1]);const ctx=getSentence(summary,m.index);nums.push({value:v,unit:"%",raw:m[0],context:ctx,idx:m.index})});
+  // Currency: require B/M/K to be immediately after the number (no space)
+  const cur=[...summary.matchAll(/([£$€])\s*(\d+(?:\.\d+)?)(B|M|K|b|m|k)?(?=[\s,.\-]|$)/g)];
+  cur.forEach(m=>{let v=parseFloat(m[2]);const s=m[3]?(m[3].toUpperCase()==="B"?"B":m[3].toUpperCase()==="M"?"M":"K"):"";const ctx=getSentence(summary,m.index);nums.push({value:v,unit:m[1]+s,raw:m[1]+m[2]+(m[3]||""),context:ctx,idx:m.index})});
+  const mul=[...summary.matchAll(/(\d+(?:\.\d+)?)\s*[×x]/g)];
+  mul.forEach(m=>{const v=parseFloat(m[1]);const ctx=getSentence(summary,m.index);nums.push({value:v,unit:"×",raw:m[0],context:ctx,idx:m.index})});
+  return nums.sort((a,b)=>a.idx-b.idx);
+}
+function sentiment(ctx){const lc=(ctx||"").toLowerCase();if(lc.includes("gap")||lc.includes("only")||lc.includes("lack")||lc.includes("decline")||lc.includes("fine")||lc.includes("complaint")||lc.includes("risk")||lc.includes("not prepared")||lc.includes("weakness")||lc.includes("behind"))return"negative";if(lc.includes("grow")||lc.includes("increase")||lc.includes("opportunit")||lc.includes("higher")||lc.includes("faster")||lc.includes("surge")||lc.includes("viable")||lc.includes("demand")||lc.includes("up from"))return"positive";return"neutral"}
+function hex(cx,cy,r){const pts=[];for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/6;pts.push(`${cx+r*Math.cos(a)},${cy+r*Math.sin(a)}`);}return pts.join(" ")}
+
+function WebResearchCard(){
+  const[data,setData]=useState(null);const[loading,setLoading]=useState(true);const[tab,setTab]=useState(0);const[hovSig,setHovSig]=useState(null);const[showLeg,setShowLeg]=useState(false);const[expHex,setExpHex]=useState(null);
+  useEffect(()=>{(async()=>{try{const sources=await sb.select("od_web_research",{eq:{org_id:ORG_ID}});setData(sources||[]);}catch(e){console.error(e)}finally{setLoading(false)}})()},[]);
+
+  if(loading)return<div style={{padding:"32px",color:"#898989",fontSize:"13px"}}>Loading intelligence…</div>;
+  if(!data||!data.length)return null;
+
+  const grouped={};ALL_CATS.forEach(c=>grouped[c]=[]);
+  data.forEach(s=>{const cat=s.category||"Market Trends";if(!grouped[cat])grouped[cat]=[];grouped[cat].push(s)});
+  const signals=[];
+  data.forEach(s=>{
+    const nums=parseNums(s.summary);const cat=s.category||"Market Trends";
+    if(nums.length===0)signals.push({source:s,cat,stat:null,sent:sentiment(s.summary),rel:s.relevance,primary:true});
+    else nums.slice(0,2).forEach((n,i)=>signals.push({source:s,cat,stat:n,sent:sentiment(n.context),rel:s.relevance,primary:i===0}));
+  });
+  const impLvl=r=>{if(!r)return 3;const l=r.toLowerCase();return l==="critical"?1:l==="high"?2:3};
+  const relOrd=r=>{const l=(r||"").toLowerCase();return l==="critical"?1:l==="high"?2:3};
+  const tabs=["Key numbers","Signals","Landscape","Readiness"];
+  const sC={"negative":"#A61D68","neutral":"#C4C4C4","positive":"#2251FF"};
+  const today=new Date();
+  const freshDays=d=>{if(!d)return 999;return Math.floor((today-new Date(d))/(1000*60*60*24))};
+  const frColor=d=>{const f=freshDays(d);return f<=30?"#00806A":f<=60?"#D97706":"#B91C1C"};
+
+  return(<div style={{padding:"28px 32px",fontFamily:"'Helvetica Neue',Arial,sans-serif"}}>
+    <div style={{display:"flex",gap:"0",marginBottom:"24px",borderBottom:"1px solid #ccc"}}>
+      {tabs.map((t,i)=><button key={t} onClick={()=>setTab(i)} style={{padding:"8px 16px",fontSize:"11px",fontWeight:tab===i?700:400,color:tab===i?"#000":"#999",background:"none",border:"none",borderBottom:tab===i?"2px solid #2251FF":"2px solid transparent",cursor:"pointer",textTransform:"uppercase",letterSpacing:"0.06em"}}>{t}</button>)}
+    </div>
+
+    {/* ═══ TAB 0: KEY NUMBERS (briefing cards) ═══ */}
+    {tab===0&&(()=>{
+      const cards=[];
+      data.forEach(s=>{const nums=parseNums(s.summary);const cc=CC[s.category]||"#999";
+        const fr=freshDays(s.date_captured);const frc=frColor(s.date_captured);
+        if(nums.length>0){const headline=nums[0];
+          const sentences=s.summary.split(/\.\s+/);const soWhat=sentences.find(st=>st.toLowerCase().match(/opportunit|gap|sweet spot|advantage|threat|window|leaving|suggest|implies|validates|risk|compliance|underserved|prerequisite|viable/))||sentences[sentences.length-1];
+          cards.push({source:s,stat:headline,cat:s.category,cc,rel:s.relevance,soWhat:soWhat.trim(),freshDays:fr,frc,summary:s.summary})}});
+      const topCards=ALL_CATS.map(cat=>{const cc=cards.filter(c=>c.cat===cat).sort((a,b)=>relOrd(a.rel)-relOrd(b.rel)||a.freshDays-b.freshDays);return cc[0]}).filter(Boolean);
+      return<div>
+        <div style={{fontSize:"17px",fontWeight:700,color:"#000",lineHeight:1.3,marginBottom:"4px"}}>Key findings from horizon scanning</div>
+        <div style={{fontSize:"12px",color:"#333",marginBottom:"4px"}}>Headline statistic per intelligence category — the number that matters most from each domain</div>
+        <div style={{fontSize:"13px",color:"#000",lineHeight:1.6,marginBottom:"18px"}}>
+          <strong>The numbers tell a clear story: the market is ready but the mid-market is underserved.</strong>
+          {topCards.find(c=>c.cat==="Market Trends")?` ${topCards.find(c=>c.cat==="Market Trends").stat.raw} headline adoption masks shallow integration — most firms adopted AI for operations, not strategy. `:""}
+          {topCards.find(c=>c.cat==="Market Opportunity")?<><em>Action: target the gap between adoption and strategic use — that is Meridian's sweet spot.</em> </>:""}
+          {topCards.find(c=>c.cat==="Regulatory")?` Regulatory burden (${topCards.find(c=>c.cat==="Regulatory").stat.raw}) will force compliance spending — position ISO 42001 readiness as a selling point, not a cost centre.`:""}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"14px"}}>
+          {topCards.map((c,i)=>{
+            const afterStat=c.stat.context.substring(c.stat.context.indexOf(c.stat.raw)+c.stat.raw.length).trim();
+            const statLabel=afterStat.split(/[,.;]/)[0].trim().toUpperCase().substring(0,35);
+            return<div key={i} style={{border:"1px solid #E0E0E0",borderLeft:"4px solid "+c.cc,padding:"18px 20px",background:"#fff"}}>
+              <div style={{display:"flex",gap:"16px",alignItems:"flex-start"}}>
+                <div style={{flex:"0 0 auto"}}>
+                  <div style={{fontSize:"36px",fontWeight:700,color:"#051C2C",lineHeight:1}}>{c.stat.raw}</div>
+                  <div style={{fontSize:"9px",color:c.cc,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginTop:"4px",maxWidth:"100px"}}>{statLabel||c.cat}</div>
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:"12px",fontWeight:700,color:"#051C2C",marginBottom:"4px"}}>{c.source.source_name}</div>
+                  <div style={{fontSize:"10px",color:"#666",lineHeight:1.5,marginBottom:"8px"}}>{c.summary}</div>
+                  <div style={{background:"#FFF4E5",padding:"4px 8px",display:"inline-block"}}>
+                    <span style={{fontSize:"9px",fontWeight:600,color:"#92400e"}}>SO WHAT: {c.soWhat}</span>
+                  </div>
+                </div>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:"12px",paddingTop:"8px",borderTop:"1px solid #f0f0f0"}}>
+                <div style={{display:"flex",gap:"6px"}}>
+                  <span style={{fontSize:"9px",padding:"2px 8px",border:"1px solid "+c.cc+"40",color:c.cc,fontWeight:600}}>{c.cat}</span>
+                  {c.rel&&<span style={{fontSize:"9px",padding:"2px 8px",background:relOrd(c.rel)===1?"#FDECEC":relOrd(c.rel)===2?"#FFF4E5":"#F2F2F2",color:relOrd(c.rel)===1?"#B91C1C":relOrd(c.rel)===2?"#92400e":"#555",fontWeight:600}}>{c.rel}</span>}
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:"4px"}}>
+                  <span style={{width:"6px",height:"6px",borderRadius:"50%",background:c.frc,display:"inline-block"}}/>
+                  <span style={{fontSize:"9px",color:c.frc,fontWeight:600}}>{c.freshDays}d</span>
+                </div>
+              </div>
+            </div>})}
+        </div>
+        <div style={{fontSize:"9px",color:"#999",fontStyle:"italic",marginTop:"16px"}}>Source: Statistics extracted from {data.length} intelligence source summaries. Meridian Dynamics · Synthesis Intelligence</div>
+      </div>})()}
+
+    {/* ═══ TAB 1: SIGNALS (hexagon matrix with hover on each hex) ═══ */}
+    {tab===1&&(()=>{
+      const byImp={1:[],2:[],3:[]};signals.filter(s=>s.primary).forEach(s=>{const lv=impLvl(s.rel);if(byImp[lv])byImp[lv].push(s)});
+      const sL=["negative","neutral","positive"];const sH={"negative":"Mostly negative trend","neutral":"Neutral trend","positive":"Mostly positive trend"};
+      const impNames={1:"Critical",2:"High",3:"Emerging"};
+      const nH=signals.filter(s=>s.sent==="negative"&&s.primary).length;
+      const nN=signals.filter(s=>s.sent==="neutral"&&s.primary).length;
+      const nT=signals.filter(s=>s.sent==="positive"&&s.primary).length;
+      const net=nT-nH;
+      const honeycomb=(n,r)=>{if(n===0)return[];if(n===1)return[{cx:0,cy:0}];const dx=r*1.76;const dy=r*1.52;
+        if(n===2)return[{cx:-dx/2,cy:0},{cx:dx/2,cy:0}];
+        if(n===3)return[{cx:-dx/2,cy:-dy/2},{cx:dx/2,cy:-dy/2},{cx:0,cy:dy/2}];
+        if(n===4)return[{cx:-dx/2,cy:-dy/2},{cx:dx/2,cy:-dy/2},{cx:-dx,cy:dy/2},{cx:0,cy:dy/2}];
+        if(n===5)return[{cx:-dx/2,cy:-dy/2},{cx:dx/2,cy:-dy/2},{cx:-dx,cy:dy/2},{cx:0,cy:dy/2},{cx:dx,cy:dy/2}];
+        if(n===6)return[{cx:-dx/2,cy:-dy},{cx:dx/2,cy:-dy},{cx:-dx,cy:0},{cx:0,cy:0},{cx:dx,cy:0},{cx:-dx/2,cy:dy}];
+        if(n===7)return[{cx:-dx/2,cy:-dy},{cx:dx/2,cy:-dy},{cx:-dx,cy:0},{cx:0,cy:0},{cx:dx,cy:0},{cx:-dx/2,cy:dy},{cx:dx/2,cy:dy}];
+        const pts=[];const cols=Math.ceil(Math.sqrt(n*1.2));const rows=Math.ceil(n/cols);let placed=0;
+        for(let row=0;row<rows&&placed<n;row++){const inRow=Math.min(cols,n-placed);const ox=row%2?dx*0.5:0;
+          for(let col=0;col<inRow&&placed<n;col++){pts.push({cx:col*dx+ox-(inRow-1)*dx/2,cy:row*dy-(rows-1)*dy/2});placed++}}return pts;};
+      const headCats=[...new Set(signals.filter(s=>s.sent==="negative"&&s.primary).map(s=>s.cat))];
+      let sigIdx=0;
+      return<div>
+        <div style={{display:"flex",gap:"40px",alignItems:"flex-start"}}>
+          <div style={{flex:"0 0 260px"}}>
+            <div style={{fontSize:"17px",color:"#000",lineHeight:1.55}}>
+              <strong>The balance of market forces is {nT}:{nH} in favour of tailwinds{net>0?` (net +${net})`:""} — {nT>=nH*2?"a strongly favourable":nT>nH?"a moderately favourable":"a balanced"} environment for Meridian.</strong>
+              {" "}Of {nH+nN+nT} signals extracted from {data.length} intelligence sources, {nT} indicate opportunity and {nH} indicate threat.
+              {headCats.length>0&&` Headwinds concentrate in ${headCats.join(" and ").toLowerCase()}.`}
+            </div>
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:"18px",fontWeight:700,color:"#000",lineHeight:1.3,marginBottom:"4px"}}>Most external forces are tailwinds, but competitive and regulatory headwinds are accelerating.</div>
+            <div style={{fontSize:"12px",color:"#333",marginBottom:"16px"}}>Number of signals by strategic impact and 2025–26 trend direction</div>
+            {/* Legend as hover info button */}
+            <div style={{position:"relative",display:"inline-block",marginBottom:"14px"}}>
+              <button onMouseEnter={()=>setShowLeg(true)} onMouseLeave={()=>setShowLeg(false)} style={{background:"none",border:"1px solid #ccc",borderRadius:"50%",width:"22px",height:"22px",fontSize:"11px",color:"#888",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>?</button>
+              {showLeg&&<div style={{position:"absolute",top:"26px",left:0,background:"#fff",border:"1px solid #ddd",boxShadow:"0 4px 12px rgba(0,0,0,0.1)",padding:"10px 14px",zIndex:100,whiteSpace:"nowrap"}}>
+                <div style={{display:"flex",gap:"16px"}}>
+                  {sL.map(s=><div key={s} style={{display:"flex",alignItems:"center",gap:"5px"}}>
+                    <svg width="14" height="14" viewBox="0 0 14 14"><polygon points={hex(7,7,6)} fill={sC[s]} opacity="0.8"/></svg>
+                    <span style={{fontSize:"10px",color:"#333"}}>{s==="negative"?"Threat / headwind":s==="neutral"?"Neutral / mixed":"Opportunity / tailwind"}</span>
+                  </div>)}
+                </div>
+              </div>}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 1fr",borderBottom:"1px solid #ccc",paddingBottom:"6px"}}>
+              <div style={{fontSize:"10px",fontWeight:600,color:"#333"}}>Impact</div>
+              {sL.map(s=><div key={s} style={{fontSize:"10px",fontWeight:600,color:sC[s],textAlign:"center"}}>{sH[s]}</div>)}
+            </div>
+            {[1,2,3].map(level=>{
+              const row=byImp[level]||[];const bS={negative:[],neutral:[],positive:[]};row.forEach(s=>{if(bS[s.sent])bS[s.sent].push(s)});
+              return<div key={level} style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 1fr",borderBottom:"1px solid #f0f0f0",padding:"16px 0",alignItems:"flex-start",background:level===1?"#FAFAFA":"#fff"}}>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"3px",paddingTop:"8px"}}>
+                  <div style={{width:36,height:36,borderRadius:"50%",background:level===1?"#2251FF18":level===2?"#2251FF0C":"#66666608",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <span style={{fontSize:"16px",fontWeight:700,color:level<=2?"#2251FF":"#888"}}>{level}</span>
+                  </div>
+                  <span style={{fontSize:"8px",color:"#999"}}>{impNames[level]}</span>
+                </div>
+                {sL.map(sent=>{const items=bS[sent]||[];if(!items.length)return<div key={sent} style={{minHeight:"50px"}}/>;
+                  const r=13;const pts=honeycomb(items.length,r);const pad=16;
+                  const xs=pts.map(p=>p.cx);const ys=pts.map(p=>p.cy);
+                  const minX=Math.min(...xs)-r-1;const maxX=Math.max(...xs)+r+1;
+                  const minY=Math.min(...ys)-r-1;const maxY=Math.max(...ys)+r+1;
+                  const svgW=maxX-minX+pad*2;const svgH=maxY-minY+pad;
+                  const cellStart=sigIdx;sigIdx+=items.length;
+                  return<div key={sent} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"4px",position:"relative"}}>
+                    <svg width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`} style={{display:"block"}}>
+                      {pts.map((p,i)=>{const cx=p.cx-minX+pad;const cy=p.cy-minY+pad/2;const gi=cellStart+i;const isH=hovSig===gi;
+                        return<g key={i} onMouseEnter={()=>setHovSig(gi)} onMouseLeave={()=>setHovSig(null)} style={{cursor:"pointer"}}>
+                          <polygon points={hex(cx,cy,r-1.5)} fill={sC[sent]} opacity={isH?1:(level===3?0.4:level===2?0.6:0.85)} stroke={isH?"#000":"#fff"} strokeWidth="1.5"/>
+                        </g>})}
+                    </svg>
+                    <div style={{fontSize:"9px",color:"#666"}}>{items.length} signal{items.length>1?"s":""}</div>
+                    {items.map((s,i)=>{const gi=cellStart+i;if(hovSig!==gi)return null;const cc=CC[s.cat]||"#999";
+                      return<div key={i} style={{position:"absolute",top:svgH+22,left:"50%",transform:"translateX(-50%)",width:"300px",background:"#fff",border:"1px solid #ddd",boxShadow:"0 4px 16px rgba(0,0,0,0.12)",padding:"12px 14px",zIndex:100,pointerEvents:"none"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:"5px",marginBottom:"6px"}}>
+                          <span style={{width:"3px",height:"14px",background:cc,display:"inline-block"}}/>
+                          <span style={{fontSize:"11px",fontWeight:700,color:"#000"}}>{s.source.source_name}</span>
+                        </div>
+                        {s.stat&&<div style={{fontSize:"20px",fontWeight:700,color:sC[s.sent],marginBottom:"6px"}}>{s.stat.raw}</div>}
+                        <div style={{fontSize:"10px",color:"#444",lineHeight:1.5}}>{s.stat?s.stat.context:s.source.summary}</div>
+                        <div style={{marginTop:"8px",display:"flex",gap:"4px"}}>
+                          <span style={{fontSize:"8px",padding:"2px 6px",background:cc+"15",color:cc,fontWeight:600}}>{s.cat}</span>
+                          <span style={{fontSize:"8px",padding:"2px 6px",background:"#f5f5f5",color:"#666"}}>{s.rel}</span>
+                        </div>
+                      </div>})}
+                  </div>})}
+              </div>})}
+            <div style={{display:"flex",justifyContent:"center",gap:"36px",padding:"12px 0",borderTop:"1px solid #ccc"}}>
+              <span style={{fontSize:"12px",fontWeight:600,color:"#A61D68"}}>{nH} headwinds</span>
+              <span style={{fontSize:"12px",fontWeight:600,color:"#999"}}>{nN} neutral</span>
+              <span style={{fontSize:"12px",fontWeight:600,color:"#2251FF"}}>{nT} tailwinds</span>
+            </div>
+          </div>
+        </div>
+        <div style={{fontSize:"9px",color:"#999",fontStyle:"italic",marginTop:"12px"}}>Source: Signal decomposition of {data.length} intelligence sources. Meridian Dynamics · Synthesis Intelligence</div>
+      </div>})()}
+
+    {/* ═══ TAB 2: MARKET LANDSCAPE (hexagon cluster per category) ═══ */}
+    {/* ═══ TAB 2: LANDSCAPE (McKinsey hexagon clusters per category) ═══ */}
+    {tab===2&&(()=>{
+      const nameFromSummary=(s)=>{
+        const lc=s.toLowerCase();
+        if(lc.includes("adoption")&&lc.includes("roi"))return"Adoption vs\nROI gap";
+        if(lc.includes("mid-market")&&lc.includes("ai")&&lc.includes("consulting"))return"Mid-market\nAI gap";
+        if(lc.includes("strategy execution"))return"Strategy\nexecution gap";
+        if(lc.includes("spending")&&lc.includes("forecast"))return"AI spending\nsurge";
+        if(lc.includes("series")&&lc.includes("strategyai"))return"Competitor\nfunding";
+        if(lc.includes("okr")||lc.includes("quantive"))return"OKR platform\nAI push";
+        if(lc.includes("jedox")||lc.includes("board international"))return"Market\nconsolidation";
+        if(lc.includes("cascade strategy"))return"SMB tool\nlandscape";
+        if(lc.includes("eu ai act"))return"EU AI Act\ndeadline";
+        if(lc.includes("iso 42001"))return"ISO certification\nwave";
+        if(lc.includes("gdpr")&&lc.includes("ai"))return"GDPR AI\nenforcement";
+        if(lc.includes("uk ai safety"))return"UK governance\nguidelines";
+        if(lc.includes("foundation model")||lc.includes("api cost"))return"API cost\ncollapse";
+        if(lc.includes("copilot"))return"Copilot\nstrategy gap";
+        if(lc.includes("forrester")||lc.includes("ai platform spend"))return"Enterprise\nAI spend";
+        if(lc.includes("gartner")&&lc.includes("planning"))return"Planning AI\ndemand";
+        if(lc.includes("ons")||lc.includes("35,400"))return"UK mid-market\nsizing";
+        if(lc.includes("bain")||lc.includes("consulting market"))return"Strategy as\nplatform";
+        if(lc.includes("linkedin")||lc.includes("job"))return"AI strategy\ntalent war";
+        if(lc.includes("ft")||lc.includes("18% yoy"))return"Consulting\nspend growth";
+        const words=s.split(/[\s,]+/).filter(w=>w.length>3).slice(0,3);return words.slice(0,2).join(" ")+"\n"+words.slice(2,3).join("");
+      };
+      const catIcon=(cat,x,y)=>{
+        const c="#fff";const o=0.25;const s=22;
+        if(cat==="Market Trends")return<g opacity={o} transform={`translate(${x-s/2},${y-s/2})`}><path d={`M${s*0.1} ${s*0.8} L${s*0.3} ${s*0.3} L${s*0.5} ${s*0.5} L${s*0.7} ${s*0.1} L${s*0.9} ${s*0.4}`} fill="none" stroke={c} strokeWidth="2" strokeLinecap="round"/></g>;
+        if(cat==="Competitive Intelligence")return<g opacity={o} transform={`translate(${x-s/2},${y-s/2})`}><circle cx={s*0.35} cy={s*0.4} r={s*0.25} fill="none" stroke={c} strokeWidth="1.5"/><circle cx={s*0.65} cy={s*0.4} r={s*0.25} fill="none" stroke={c} strokeWidth="1.5"/><line x1={s*0.35} y1={s*0.7} x2={s*0.35} y2={s*0.9} stroke={c} strokeWidth="1.5"/><line x1={s*0.65} y1={s*0.7} x2={s*0.65} y2={s*0.9} stroke={c} strokeWidth="1.5"/></g>;
+        if(cat==="Regulatory")return<g opacity={o} transform={`translate(${x-s/2},${y-s/2})`}><rect x={s*0.2} y={s*0.15} width={s*0.6} height={s*0.7} fill="none" stroke={c} strokeWidth="1.5" rx="2"/><line x1={s*0.35} y1={s*0.35} x2={s*0.65} y2={s*0.35} stroke={c} strokeWidth="1"/><line x1={s*0.35} y1={s*0.5} x2={s*0.65} y2={s*0.5} stroke={c} strokeWidth="1"/><line x1={s*0.35} y1={s*0.65} x2={s*0.55} y2={s*0.65} stroke={c} strokeWidth="1"/></g>;
+        if(cat==="Technology")return<g opacity={o} transform={`translate(${x-s/2},${y-s/2})`}><rect x={s*0.15} y={s*0.3} width={s*0.7} height={s*0.45} fill="none" stroke={c} strokeWidth="1.5" rx="1"/><line x1={s*0.3} y1={s*0.15} x2={s*0.5} y2={s*0.3} stroke={c} strokeWidth="1.5"/><line x1={s*0.7} y1={s*0.15} x2={s*0.5} y2={s*0.3} stroke={c} strokeWidth="1.5"/></g>;
+        if(cat==="Market Opportunity")return<g opacity={o} transform={`translate(${x-s/2},${y-s/2})`}><circle cx={s*0.5} cy={s*0.35} r={s*0.22} fill="none" stroke={c} strokeWidth="1.5"/><path d={`M${s*0.35} ${s*0.6} Q${s*0.5} ${s*0.9} ${s*0.65} ${s*0.6}`} fill="none" stroke={c} strokeWidth="1.5"/></g>;
+        return null;
+      };
+      const findings=[];let fIdx=1;
+      data.forEach(s=>{const cat=s.category||"Market Trends";const cc=CC[cat]||"#999";
+        const name=nameFromSummary(s.summary);const sent=sentiment(s.summary);
+        findings.push({id:fIdx++,cat,cc,name,full:s.summary,source:s.source_name,sent,rel:s.relevance});
+      });
+      const catGroups=ALL_CATS.map(cat=>({cat,cc:CC[cat]||"#999",items:findings.filter(f=>f.cat===cat)})).filter(g=>g.items.length>0);
+      const sentDotC=s=>s==="positive"?"#2251FF":s==="negative"?"#A61D68":"#C4C4C4";
+      const clusterPos=(n)=>{const r=50;const dx=r*1.76;const dy=r*1.52;
+        if(n===1)return[{x:0,y:0}];if(n===2)return[{x:-dx/2,y:0},{x:dx/2,y:0}];
+        if(n===3)return[{x:-dx/2,y:-dy/2},{x:dx/2,y:-dy/2},{x:0,y:dy/2}];
+        if(n===4)return[{x:-dx/2,y:-dy/2},{x:dx/2,y:-dy/2},{x:-dx,y:dy/2},{x:0,y:dy/2}];
+        if(n===5)return[{x:0,y:-dy},{x:-dx,y:0},{x:0,y:0},{x:dx,y:0},{x:-dx/2,y:dy}];
+        return Array.from({length:n},(_,i)=>{const row=Math.floor(i/3);const col=i%3;return{x:(col-1)*dx+(row%2?dx/2:0),y:(row-1)*dy}});};
+      return<div>
+        <div style={{fontSize:"20px",fontWeight:700,color:"#000",lineHeight:1.3,marginBottom:"8px"}}>The {findings.length} strategic findings identified in Q1 2026.</div>
+        <div style={{display:"flex",gap:"16px",marginBottom:"24px",alignItems:"center"}}>
+          <span style={{fontSize:"10px",color:"#555",fontWeight:600}}>2025–26 trend</span>
+          {[{l:"Mostly negative",c:"#A61D68"},{l:"Neutral",c:"#C4C4C4"},{l:"Mostly positive",c:"#2251FF"}].map(lg=><div key={lg.l} style={{display:"flex",alignItems:"center",gap:"4px"}}><span style={{width:7,height:7,borderRadius:"50%",background:lg.c,display:"inline-block"}}/><span style={{fontSize:"10px",color:"#333"}}>{lg.l}</span></div>)}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"36px 28px"}}>
+          {catGroups.map(g=>{
+            const r=50;const pts=clusterPos(g.items.length);
+            const allX=pts.map(p=>p.x);const allY=pts.map(p=>p.y);
+            const padX=60;const padY=50;
+            const minX=Math.min(...allX)-r-padX;const maxX=Math.max(...allX)+r+padX;
+            const minY=Math.min(...allY)-r-padY;const maxY=Math.max(...allY)+r+padY;
+            const svgW=maxX-minX;const svgH=maxY-minY;
+            const cx0=-minX;const cy0=-minY;
+            return<div key={g.cat}>
+              <div style={{fontSize:"14px",fontWeight:700,color:"#000",marginBottom:"8px"}}>{g.cat}</div>
+              <svg width="100%" viewBox={`0 0 ${svgW} ${svgH}`} style={{display:"block",overflow:"visible"}}>
+                {catIcon(g.cat,cx0,cy0)}
+                {pts.map((p,i)=>{const item=g.items[i];if(!item)return null;
+                  const fx=cx0+p.x;const fy=cy0+p.y;const dotC=sentDotC(item.sent);
+                  const isExp=expHex===item.id;
+                  const shade=item.rel==="Critical"?0.92:item.rel==="High"?0.72:0.52;
+                  return<g key={i} onClick={()=>setExpHex(isExp?null:item.id)} style={{cursor:"pointer"}}>
+                    <polygon points={hex(fx,fy,isExp?r+6:r-2)} fill={isExp?"#06213F":g.cc} opacity={shade} stroke={isExp?"#4488FF":"#fff"} strokeWidth={isExp?"2":"2"} style={{transition:"all 0.2s ease"}}/>
+                    <text x={fx+r-8} y={fy-r+14} textAnchor="end" style={{fontSize:"10px",fontWeight:700,fill:"#000",opacity:0.5}}>{item.id}</text>
+                    <circle cx={fx+r-3} cy={fy-r+10} r="3.5" fill={dotC}/>
+                    {/* Multi-line name */}
+                    {item.name.split("\n").map((line,li)=><text key={li} x={fx} y={fy-6+li*12} textAnchor="middle" style={{fontSize:"9px",fontWeight:700,fill:"#fff",pointerEvents:"none"}}>{line}</text>)}
+                  </g>})}
+              </svg>
+              {/* Expanded card below cluster */}
+              {g.items.map(item=>{if(expHex!==item.id)return null;
+                return<div key={item.id} style={{margin:"6px 0 12px",padding:"14px",background:"#06213F",color:"#fff",fontSize:"11px",lineHeight:1.6,borderLeft:"3px solid "+g.cc,animation:"panelIn 0.2s ease"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}}>
+                    <span style={{fontWeight:700,fontSize:"13px"}}>{item.name.replace("\n"," ")}</span>
+                    <button onClick={e=>{e.stopPropagation();setExpHex(null)}} style={{background:"none",border:"1px solid #ffffff30",color:"#fff",fontSize:"10px",padding:"2px 8px",cursor:"pointer"}}>×</button>
+                  </div>
+                  <div style={{opacity:0.85,marginBottom:"8px"}}>{item.full}</div>
+                  <div style={{display:"flex",gap:"6px",fontSize:"8px"}}>
+                    <span style={{padding:"2px 6px",background:"#ffffff15"}}>{item.source}</span>
+                    <span style={{padding:"2px 6px",background:"#ffffff15"}}>{item.rel}</span>
+                    <span style={{padding:"2px 6px",background:sentDotC(item.sent)+"25",color:sentDotC(item.sent)}}>{item.sent==="positive"?"Tailwind":item.sent==="negative"?"Headwind":"Neutral"}</span>
+                  </div>
+                </div>})}
+            </div>})}
+        </div>
+        {/* Summary insight */}
+        {(()=>{
+          const posCount=findings.filter(f=>f.sent==="positive").length;
+          const negCount=findings.filter(f=>f.sent==="negative").length;
+          const neuCount=findings.filter(f=>f.sent==="neutral").length;
+          const biggestCat=catGroups.sort((a,b)=>b.items.length-a.items.length)[0];
+          return<div style={{display:"flex",gap:"32px",alignItems:"flex-start",marginTop:"20px"}}>
+            <div style={{flex:"0 0 240px"}}>
+              <div style={{fontSize:"14px",color:"#000",lineHeight:1.6}}>
+                <strong>{posCount} tailwinds vs {negCount} headwinds — the window is open but closing.</strong>
+                {posCount>negCount?` The market favours first movers. `:" Competitive and regulatory pressure is real. "}
+                {negCount>0&&<><em>Action: neutralise the {negCount} headwinds through compliance investment and competitive differentiation before they become blockers.</em> </>}
+                {biggestCat&&` Focus on ${biggestCat.cat} — the densest cluster signals where most intelligence effort should concentrate.`}
+              </div>
+            </div>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",gap:"16px"}}>
+                <div style={{textAlign:"center",padding:"8px 16px",background:"#2251FF10",flex:1}}>
+                  <div style={{fontSize:"22px",fontWeight:700,color:"#2251FF"}}>{posCount}</div>
+                  <div style={{fontSize:"9px",color:"#666",textTransform:"uppercase",letterSpacing:"0.06em"}}>Tailwinds</div>
+                </div>
+                <div style={{textAlign:"center",padding:"8px 16px",background:"#A61D6810",flex:1}}>
+                  <div style={{fontSize:"22px",fontWeight:700,color:"#A61D68"}}>{negCount}</div>
+                  <div style={{fontSize:"9px",color:"#666",textTransform:"uppercase",letterSpacing:"0.06em"}}>Headwinds</div>
+                </div>
+                <div style={{textAlign:"center",padding:"8px 16px",background:"#88888810",flex:1}}>
+                  <div style={{fontSize:"22px",fontWeight:700,color:"#888"}}>{neuCount}</div>
+                  <div style={{fontSize:"9px",color:"#666",textTransform:"uppercase",letterSpacing:"0.06em"}}>Neutral</div>
+                </div>
+              </div>
+            </div>
+          </div>})()}
+        <div style={{fontSize:"9px",color:"#999",fontStyle:"italic",marginTop:"16px"}}>Source: {data.length} intelligence sources analysed. Click any hexagon to expand. Meridian Dynamics · Synthesis Intelligence</div>
+      </div>})()}
+    {/* ═══ TAB 3: READINESS (SVG dots on track — original) ═══ */}
+    {tab===3&&(()=>{
+      const dims=[];
+      const findPct=(kw)=>{for(const s of data){for(const n of parseNums(s.summary)){if(n.unit==="%"&&n.context.toLowerCase().includes(kw.toLowerCase()))return{val:n.value,src:s.source_name}}}return null};
+      const add=(label,sub,kw,tgt,cat)=>{const f=findPct(kw);if(f)dims.push({label,sub,current:f.val,target:tgt,source:f.src.split(":")[0],cat})};
+      add("AI adoption in consulting","Professional services firms using AI tools","consulting firms",90,"Market Trends");
+      add("AI integration depth","Firms with AI integrated into methodology","integrated AI into their core",80,"Market Trends");
+      add("Mid-market AI penetration","Mid-market firms using AI for strategy","9% use any form",40,"Market Opportunity");
+      add("Strategy execution rate","Corporates successfully executing strategy","strategies are successfully",70,"Market Trends");
+      add("AI for strategic planning","Enterprises using AI for planning decisions","8% of enterprises use AI for strategic",40,"Technology");
+      add("AI governance certification","Large enterprises ISO 42001 certified","12% of large enterprises now certified",50,"Regulatory");
+      add("Enterprise AI spend growth","Firms increasing AI platform spend","78% of enterprises plan to increase",90,"Technology");
+      add("UK enterprise regulatory readiness","Businesses prepared for AI regulation","68% of UK businesses say",50,"Regulatory");
+      if(!dims.length)return<div style={{padding:"20px",color:"#999"}}>No matching statistics found in summaries.</div>;
+      const avg=Math.round(dims.reduce((s,d)=>s+d.current,0)/dims.length);const avgT=Math.round(dims.reduce((s,d)=>s+d.target,0)/dims.length);
+      const barL=320;const sc=100;
+      return<div style={{display:"flex",gap:"32px",alignItems:"flex-start"}}>
+        <div style={{flex:"0 0 240px"}}>
+          <div style={{fontSize:"14px",color:"#000",lineHeight:1.6}}><strong>Readiness averages {avg}% against a {avgT}% market requirement — a {avgT-avg}pp gap that competitors will exploit.</strong> The widest gaps are in mid-market AI penetration and governance certification. <em>Action: close the certification gap first — it's a prerequisite to enterprise sales. Then attack the integration depth gap, which is where real differentiation lives.</em></div>
+        </div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:"15px",fontWeight:700,color:"#000",marginBottom:"4px"}}>Readiness is advancing, but significant gaps remain.</div>
+          <div style={{fontSize:"11px",color:"#000",marginBottom:"14px"}}>Current state vs market-implied requirement, % (extracted from source summaries)</div>
+          <div style={{display:"flex",gap:"14px",marginBottom:"10px",alignItems:"center"}}>
+            <svg width="70" height="14"><circle cx="6" cy="7" r="4.5" fill="#2251FF"/><text x="16" y="11" style={{fontSize:"8px",fill:"#666"}}>Current</text></svg>
+            <svg width="90" height="14"><circle cx="6" cy="7" r="4" fill="none" stroke="#000" strokeWidth="1.2"/><text x="16" y="11" style={{fontSize:"8px",fill:"#666"}}>Required pace</text></svg>
+          </div>
+          <svg width="460" height={dims.length*46+50} viewBox={`0 0 460 ${dims.length*46+50}`}>
+            <line x1={130+avg/sc*barL} y1="0" x2={130+avg/sc*barL} y2={dims.length*46} stroke="#000" strokeWidth="0.8" strokeDasharray="4,3"/>
+            <text x={130+avg/sc*barL} y={dims.length*46+14} textAnchor="middle" style={{fontSize:"9px",fill:"#000",fontStyle:"italic"}}>Avg {avg}</text>
+            <line x1={130+avgT/sc*barL} y1="0" x2={130+avgT/sc*barL} y2={dims.length*46} stroke="#000" strokeWidth="0.8" strokeDasharray="4,3" opacity="0.3"/>
+            <text x={130+avgT/sc*barL} y={dims.length*46+14} textAnchor="middle" style={{fontSize:"9px",fill:"#666",fontStyle:"italic"}}>Req. {avgT}</text>
+            {[0,25,50,75,100].map(v=><text key={v} x={130+v/sc*barL} y={dims.length*46+30} textAnchor="middle" style={{fontSize:"8px",fill:"#999"}}>{v}</text>)}
+            {dims.map((d,i)=>{const y=i*46+16;const cx=130+d.current/sc*barL;const tx=130+d.target/sc*barL;
+              return<g key={i}>
+                <text x="0" y={y} style={{fontSize:"10px",fontWeight:700,fill:"#000"}}>{d.label}</text>
+                <text x="0" y={y+12} style={{fontSize:"8px",fill:"#666"}}>{d.sub}</text>
+                <line x1="130" y1={y+6} x2={130+barL} y2={y+6} stroke="#eee" strokeWidth="2"/>
+                <circle cx={cx} cy={y+6} r="5" fill="#2251FF"/>
+                <text x={cx} y={y-4} textAnchor="middle" style={{fontSize:"9px",fill:"#2251FF",fontWeight:700}}>{d.current}</text>
+                <line x1={cx+6} y1={y+6} x2={tx-6} y2={y+6} stroke="#E85C5C" strokeWidth="1.2" strokeDasharray="3,2"/>
+                <circle cx={tx} cy={y+6} r="4" fill="none" stroke="#000" strokeWidth="1.2"/>
+                <text x={tx} y={y-4} textAnchor="middle" style={{fontSize:"8px",fill:"#666"}}>{d.target}</text>
+                <text x={130+barL+6} y={y+10} style={{fontSize:"7px",fill:"#999"}}>{d.source}</text>
+              </g>})}
+          </svg>
+        </div>
+      </div>})()}
+  </div>);
+}
+
+
+
+// ═══ VALUE CHAIN — GRAVITY MAP (original format) ═══
+// ═══ VALUE CHAIN — GRAVITY MAP ═══
+// ═══ VALUE CHAIN — McKINSEY GRAVITY MAP ═══
+// ═══ VALUE CHAIN — GRAVITY MAP ═══
+function ValueChainCard(){
+  const cvRef=useRef(null);const tipRef=useRef(null);
+  const[data,setData]=useState(null);const[loading,setLoading]=useState(true);const[hovIdx,setHovIdx]=useState(null);
+  useEffect(()=>{(async()=>{try{const r=await sb.select("od_industry_value_chain",{eq:{org_id:ORG_ID}});setData(r||[])}catch(e){console.error(e)}finally{setLoading(false)}})()},[]);
+
+  const stages=useMemo(()=>{
+    if(!data||!data.length)return[];
+    const posOrd={"Upstream":0,"Lateral":1,"Downstream":2};
+    return[...data].sort((a,b)=>(posOrd[a.position_in_chain]||1)-(posOrd[b.position_in_chain]||1)).map(e=>{
+      const givesN=(e.gives||"").split(",").length;const getsN=(e.gets||"").split(",").length;
+      const rel=(e.relationship_to_us||"").toLowerCase();
+      const margin=Math.min(65,Math.round(givesN*8+getsN*6));
+      const pool=80+givesN*30+getsN*20+(rel.includes("critical")?120:0)+(rel.includes("primary")?100:0)+(rel.includes("force")?80:0);
+      const growth=e.position_in_chain==="Downstream"?12+(givesN>3?6:0):e.position_in_chain==="Lateral"?8:3+getsN;
+      const risk=rel.includes("critical")||rel.includes("dependency")||rel.includes("non-negotiable");
+      const words=e.entity_name.split(/[\s&]+/);const short=words.length>2?words.slice(0,2).join(" "):e.entity_name;
+      const name=words.length>2?words.slice(0,Math.ceil(words.length/2)).join(" ")+"\n"+words.slice(Math.ceil(words.length/2)).join(" "):e.entity_name;
+      return{name,short,margin,pool,growth,risk,insight:e.relationship_to_us||"",players:e.entity_type+" · "+e.position_in_chain,entity:e};
+    });
+  },[data]);
+
+  const getMarginColor=m=>m>=40?"#1D9E75":m>=25?"#639922":m>=15?"#BA7517":"#E24B4A";
+  const posColor={"Upstream":"#3D5A80","Lateral":"#D97706","Downstream":"#1D9E75"};
+
+  useEffect(()=>{
+    if(!stages.length||!cvRef.current)return;
+    const canvas=cvRef.current;const ctx=canvas.getContext("2d");
+    const dpr=window.devicePixelRatio||2;
+    const W=canvas.offsetWidth||760;const H=380;
+    canvas.width=W*dpr;canvas.height=H*dpr;ctx.scale(dpr,dpr);
+    canvas.style.width=W+"px";canvas.style.height=H+"px";
+    ctx.clearRect(0,0,W,H);
+
+    const n=stages.length;const padX=64;
+    const cx=i=>padX+(i/(n-1))*(W-padX*2);const baseY=H*0.48;
+    const maxPool=Math.max(...stages.map(s=>s.pool));const minR=26,maxR=56;
+    const radius=s=>minR+(s.pool/maxPool)*(maxR-minR);
+    const maxM=Math.max(...stages.map(s=>s.margin));
+    const stageY=stages.map(s=>baseY-(s.margin/maxM-0.5)*140);
+
+    // Spine curve
+    ctx.save();ctx.strokeStyle="rgba(136,135,128,0.15)";ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(cx(0),stageY[0]);
+    for(let i=1;i<n;i++){const cpx=(cx(i-1)+cx(i))/2;ctx.bezierCurveTo(cpx,stageY[i-1],cpx,stageY[i],cx(i),stageY[i])}
+    ctx.stroke();ctx.restore();
+
+    // Gravity rings
+    stages.forEach((s,i)=>{if(s.margin<30)return;const rings=s.margin>=50?3:s.margin>=40?2:1;
+      for(let r=0;r<rings;r++){ctx.save();ctx.strokeStyle=`rgba(24,95,165,${0.08-r*0.02})`;ctx.lineWidth=1;ctx.setLineDash([3,4]);
+        ctx.beginPath();ctx.arc(cx(i),stageY[i],radius(s)+12+r*12,0,Math.PI*2);ctx.stroke();ctx.restore()}});
+
+    // Best entity halo
+    let bestIdx=0;stages.forEach((s,i)=>{if(s.margin>stages[bestIdx].margin)bestIdx=i});
+    ctx.save();ctx.fillStyle="#EAF3DE";ctx.strokeStyle="#3B6D11";ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(cx(bestIdx),stageY[bestIdx],radius(stages[bestIdx])+5,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore();
+
+    // Draw circles
+    stages.forEach((s,i)=>{
+      const r=radius(s),x=cx(i),y=stageY[i];const isHov=i===hovIdx;
+      const fill=s.risk?"#FCEBEB":"#F1EFE8";const stroke=s.risk?"#A32D2D":isHov?"#185FA5":"#888780";
+      ctx.save();ctx.fillStyle=fill;ctx.strokeStyle=stroke;ctx.lineWidth=isHov?2:1;
+      ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore();
+      // Margin bar
+      const barH=(r*1.4)*(s.margin/100),barW=r*0.55;
+      ctx.save();ctx.fillStyle=getMarginColor(s.margin);ctx.globalAlpha=0.22;
+      ctx.fillRect(x-barW/2,y+r*0.7-barH,barW,barH);ctx.restore();
+      // Name
+      const fs=Math.max(10,r*0.22);
+      ctx.save();ctx.font=`500 ${fs}px -apple-system,sans-serif`;ctx.fillStyle="#1a1a1a";ctx.textAlign="center";ctx.textBaseline="middle";
+      const lines=s.name.split("\n");const lineH=Math.max(12,r*0.25);const totalH=lines.length*lineH;
+      lines.forEach((ln,li)=>ctx.fillText(ln,x,y-totalH/2+li*lineH+lineH/2-4));
+      ctx.font=`500 ${Math.max(10,r*0.26)}px -apple-system,sans-serif`;ctx.fillStyle=getMarginColor(s.margin);
+      ctx.fillText(s.margin+"%",x,y+r*0.42);ctx.restore();
+      // Labels below
+      ctx.save();ctx.font="11px -apple-system,sans-serif";ctx.fillStyle=posColor[s.entity.position_in_chain]||"#888";ctx.textAlign="center";
+      ctx.fillText(s.entity.position_in_chain||"",x,y+r+16);
+      ctx.font="9px -apple-system,sans-serif";ctx.fillStyle="#888";
+      ctx.fillText(s.entity.entity_type||"",x,y+r+28);ctx.restore();
+    });
+
+    // Axis labels
+    ctx.save();ctx.font="10px -apple-system,sans-serif";ctx.fillStyle="rgba(136,135,128,0.45)";
+    ctx.textAlign="left";ctx.fillText("\u2190 Upstream (suppliers)",padX,H-10);
+    ctx.textAlign="right";ctx.fillText("Downstream (buyers) \u2192",W-padX,H-10);ctx.restore();
+
+    canvas._stages=stages;canvas._cx=cx;canvas._stageY=stageY;canvas._radius=radius;canvas._bestIdx=bestIdx;
+  },[stages,hovIdx]);
+
+  const onMove=useCallback(e=>{
+    if(!cvRef.current||!cvRef.current._stages)return;
+    const rect=cvRef.current.getBoundingClientRect();const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+    const stgs=cvRef.current._stages,cxFn=cvRef.current._cx,sy=cvRef.current._stageY,radFn=cvRef.current._radius;
+    let found=null;stgs.forEach((s,i)=>{const dx=mx-cxFn(i),dy=my-sy[i];if(Math.sqrt(dx*dx+dy*dy)<radFn(s)+6)found=i});
+    if(found!==hovIdx)setHovIdx(found);
+    if(found!==null&&tipRef.current){const s=stgs[found];tipRef.current.style.display="block";
+      tipRef.current.style.left=Math.min(mx+14,500)+"px";tipRef.current.style.top=(my-10)+"px";
+      tipRef.current.innerHTML=`<strong style="font-size:13px">${s.name.replace("\n"," ")}</strong><br><span style="color:#888;font-size:11px">${s.players}</span><br><br><span style="font-size:11px">${s.insight}</span>`;
+    }else if(found===null&&tipRef.current){tipRef.current.style.display="none"}
+  },[hovIdx]);
+
+  if(loading)return<div style={{padding:"32px",color:"#898989",fontSize:"13px"}}>Loading value chain…</div>;
+  if(!data||!data.length)return null;
+
+  const best=stages.reduce((a,b)=>a.margin>b.margin?a:b,stages[0]);
+  const deps=stages.filter(s=>s.risk);
+  const upN=stages.filter(s=>s.entity.position_in_chain==="Upstream").length;
+  const downN=stages.filter(s=>s.entity.position_in_chain==="Downstream").length;
+
+  return(<div style={{padding:"28px 32px",fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
+    <div style={{fontSize:"18px",fontWeight:500,marginBottom:"4px"}}>Value gravity map</div>
+    <div style={{fontSize:"13px",color:"#666",marginBottom:"8px"}}>Where is value created and captured across Meridian's ecosystem?</div>
+    <div style={{fontSize:"13px",color:"#000",lineHeight:1.6,marginBottom:"14px"}}>
+      <strong>Value flows through Meridian — but {deps.length>1?deps.length+" chokepoints":"one chokepoint"} could shut it down.</strong>
+      {deps.length>0&&<span> <strong style={{color:"#A32D2D"}}>{deps.map(d=>d.short).join(" and ")}</strong> {deps.length>1?"are":"is"} non-substitutable. <em>Diversify or lock in long-term SLAs before pricing power shifts.</em> </span>}
+      {best&&<span>The deepest exchange is <strong style={{color:"#1D9E75"}}>{best.short}</strong> at {best.margin}% density — <em>{best.entity.position_in_chain==="Downstream"?"protect with switching costs and embed deeper into their workflow":"deepen with co-development and shared roadmap"}</em>. </span>}
+      {upN>downN?<span>Chain is supply-heavy ({upN}:{downN}). <em>Add downstream routes before upstream leverage increases.</em></span>:<span>Downstream routes match or exceed suppliers. <em>Ensure no single buyer exceeds 40% of revenue.</em></span>}
+    </div>
+    <div style={{display:"flex",gap:"16px",flexWrap:"wrap",marginBottom:"12px"}}>
+      {[{fill:"#EAF3DE",stroke:"#3B6D11",label:"Deepest relationship"},{fill:"#FCEBEB",stroke:"#A32D2D",label:"Critical dependency"},{fill:"#F1EFE8",stroke:"#888780",label:"Standard entity"}].map(l=><div key={l.label} style={{display:"flex",alignItems:"center",gap:"6px",fontSize:"11px",color:"#666"}}><svg width="16" height="16"><circle cx="8" cy="8" r="7" fill={l.fill} stroke={l.stroke} strokeWidth="1.5"/></svg>{l.label}</div>)}
+      <div style={{display:"flex",alignItems:"center",gap:"6px",fontSize:"11px",color:"#666"}}><svg width="16" height="16"><circle cx="8" cy="8" r="5" fill="none" stroke="#ccc" strokeWidth="1" strokeDasharray="2,2"/></svg>Gravity field</div>
+    </div>
+    <div style={{position:"relative",width:"100%"}}>
+      <canvas ref={cvRef} height="380" onMouseMove={onMove} onMouseLeave={()=>{setHovIdx(null);if(tipRef.current)tipRef.current.style.display="none"}} style={{width:"100%",display:"block",cursor:"crosshair"}}/>
+      <div ref={tipRef} style={{position:"absolute",pointerEvents:"none",background:"#fff",border:"0.5px solid #ccc",borderRadius:"8px",padding:"8px 12px",fontSize:"12px",color:"#1a1a1a",minWidth:"180px",maxWidth:"260px",display:"none",zIndex:10,lineHeight:1.6,boxShadow:"0 2px 8px rgba(0,0,0,0.08)"}}/>
+    </div>
+    <div style={{fontSize:"9px",color:"#999",fontStyle:"italic",marginTop:"8px"}}>Source: {data.length} entities from od_industry_value_chain. Hover for detail. Meridian Dynamics · Synthesis Intelligence</div>
+  </div>);
+}
+
+// ═══ STAKEHOLDER MAP — Influence × Interest ═══
+function StakeholderCard(){
+  const[data,setData]=useState(null);const[loading,setLoading]=useState(true);const[hov,setHov]=useState(null);
+  useEffect(()=>{(async()=>{try{const r=await sb.select("od_stakeholder_groups",{eq:{org_id:ORG_ID}});setData(r||[])}catch(e){console.error(e)}finally{setLoading(false)}})()},[]);
+
+  if(loading)return<div style={{padding:"32px",color:"#898989",fontSize:"13px"}}>Loading stakeholders…</div>;
+  if(!data||!data.length)return null;
+
+  // Derive influence (y) and interest (x) from context
+  // Since the DB doesn't have these columns, we infer from group_name + type
+  const derive=g=>{
+    const n=(g.group_name||"").toLowerCase();const t=(g.type||"").toLowerCase();
+    const d=(g.description||"").toLowerCase();
+    let influence=50,interest=50,power=20,quadrant="monitor",color="#888",drift=0;
+    if(n.includes("enterprise client")){influence=75;interest=85;power=28;quadrant="manage";color="#003d82";drift=0}
+    else if(n.includes("mid-market")){influence=35;interest=78;power=20;quadrant="inform";color="#b06000";drift=1}
+    else if(n.includes("technology partner")){influence=60;interest=45;power=22;quadrant="satisfy";color="#1a7a52";drift=0}
+    else if(n.includes("investor")||n.includes("board")){influence=82;interest=40;power=24;quadrant="satisfy";color="#1a7a52";drift=-1}
+    else if(n.includes("employee")){influence=55;interest=70;power=23;quadrant="manage";color="#003d82";drift=1}
+    else if(n.includes("regulator")){influence=80;interest=30;power=24;quadrant="satisfy";color="#b02020";drift=0}
+    else if(n.includes("channel")||n.includes("partner")){influence=30;interest=65;power=18;quadrant="inform";color="#b06000";drift=1}
+    else{influence=25+Math.random()*50;interest=25+Math.random()*50;power=16}
+    return{...g,influence,interest,power,quadrant,color,drift};
+  };
+  const stakes=data.map(derive);
+  const quadLabels={manage:"Manage closely",satisfy:"Keep satisfied",inform:"Keep informed",monitor:"Monitor"};
+  const quadColors={manage:"#003d82",satisfy:"#1a7a52",inform:"#b06000",monitor:"#888"};
+  const letters="ABCDEFGHIJKLMNOP";
+
+  // SVG coordinates
+  const ox=70,oy=18,gw=590,gh=482;
+  const toX=interest=>ox+(interest/100)*gw;
+  const toY=influence=>oy+(1-influence/100)*gh;
+
+  // Group by quadrant for key
+  const byQ={manage:[],satisfy:[],inform:[],monitor:[]};
+  stakes.forEach((s,i)=>{s._letter=letters[i];s._idx=i;if(byQ[s.quadrant])byQ[s.quadrant].push(s)});
+
+  // Influence links: connect entities that likely influence each other
+  const links=[];
+  stakes.forEach((a,i)=>{stakes.forEach((b,j)=>{
+    if(j<=i)return;
+    // Connect if same type or if one is investor/board and other is enterprise
+    const an=a.group_name.toLowerCase(),bn=b.group_name.toLowerCase();
+    if((an.includes("investor")&&bn.includes("enterprise"))||(an.includes("employee")&&bn.includes("client"))||(an.includes("technology")&&bn.includes("enterprise")))
+      links.push({from:i,to:j});
+  })});
+
+  return(<div style={{padding:"20px 24px",fontFamily:"-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif"}}>
+    <div style={{fontSize:"14px",fontWeight:700,color:"#111",borderBottom:"2px solid #111",paddingBottom:"7px",marginBottom:"4px",lineHeight:1.35}}>Stakeholder influence–interest map: managing the field for successful delivery</div>
+    <div style={{fontSize:"11px",color:"#555",fontStyle:"italic",marginBottom:"6px"}}>Key question: Who must we engage closely, and who risks becoming a blocker?</div>
+    <div style={{fontSize:"13px",color:"#000",lineHeight:1.6,marginBottom:"14px"}}>
+      <strong>{byQ.manage.length>0?byQ.manage.map(s=>s.group_name).join(" and "):"No one"} will make or break this programme.</strong>
+      {byQ.manage.length>0&&<> They sit in the manage-closely quadrant — <em>schedule weekly touchpoints and make them co-owners of milestone decisions.</em> </>}
+      {byQ.satisfy.length>0&&<>{byQ.satisfy.map(s=>s.group_name).join(" and ")} have power but waning interest. <em>Risk: they become passive blockers. Re-engage with quarterly strategic briefings before drift becomes disengagement.</em> </>}
+      {stakes.filter(s=>s.drift===1).length>0&&<>{stakes.filter(s=>s.drift===1).map(s=>s.group_name).join(" and ")} show rising engagement — <em>convert this momentum into formal advocacy roles.</em></>}
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 155px",gap:"18px"}}>
+      {/* SVG Map */}
+      <div>
+        <svg width="100%" viewBox="0 0 680 560" xmlns="http://www.w3.org/2000/svg" style={{display:"block",overflow:"visible"}}>
+          {/* Quadrant fills */}
+          <rect x="70" y="18" width="295" height="241" fill="rgba(26,122,82,0.07)"/>
+          <rect x="365" y="18" width="295" height="241" fill="rgba(0,61,130,0.07)"/>
+          <rect x="70" y="259" width="295" height="241" fill="rgba(136,136,136,0.05)"/>
+          <rect x="365" y="259" width="295" height="241" fill="rgba(176,96,0,0.07)"/>
+
+          {/* Quadrant labels */}
+          <text x="80" y="36" style={{fontSize:"9px",fontWeight:700,fill:"#1a7a52",opacity:0.5}}>KEEP SATISFIED</text>
+          <text x="650" y="36" style={{fontSize:"9px",fontWeight:700,fill:"#003d82",opacity:0.5}} textAnchor="end">MANAGE CLOSELY</text>
+          <text x="80" y="490" style={{fontSize:"9px",fontWeight:700,fill:"#888",opacity:0.5}}>MONITOR</text>
+          <text x="650" y="490" style={{fontSize:"9px",fontWeight:700,fill:"#b06000",opacity:0.5}} textAnchor="end">KEEP INFORMED</text>
+
+          {/* Dividers */}
+          <line x1="365" y1="18" x2="365" y2="500" stroke="#111" strokeWidth="0.5" opacity="0.12"/>
+          <line x1="70" y1="259" x2="660" y2="259" stroke="#111" strokeWidth="0.5" opacity="0.12"/>
+          <rect x="70" y="18" width="590" height="482" fill="none" stroke="#111" strokeWidth="1" opacity="0.2"/>
+
+          {/* Axis labels */}
+          <text x="70" y="520" style={{fontSize:"9px",fill:"#666"}}>Low interest</text>
+          <text x="660" y="520" style={{fontSize:"9px",fill:"#666"}} textAnchor="end">High interest</text>
+          <text x="365" y="538" style={{fontSize:"8.5px",fontWeight:700,fill:"#555",opacity:0.7}} textAnchor="middle">LEVEL OF INTEREST →</text>
+          <text x="60" y="500" style={{fontSize:"9px",fill:"#666"}} textAnchor="end">Low</text>
+          <text x="60" y="22" style={{fontSize:"9px",fill:"#666"}} textAnchor="end">High</text>
+          <text x="16" y="259" style={{fontSize:"8.5px",fontWeight:700,fill:"#555",opacity:0.7}} textAnchor="middle" transform="rotate(-90,16,259)">LEVEL OF INFLUENCE →</text>
+
+          {/* Influence links */}
+          {links.map((l,li)=>{const a=stakes[l.from],b=stakes[l.to];const ax=toX(a.interest),ay=toY(a.influence),bx=toX(b.interest),by=toY(b.influence);
+            const cpx=(ax+bx)/2,cpy=(ay+by)/2-30;
+            return<path key={li} d={`M ${ax},${ay} Q ${cpx},${cpy} ${bx},${by}`} stroke="#aaa" strokeWidth="0.9" strokeDasharray="4,3.5" fill="none"/>})}
+
+          {/* Stakeholder nodes */}
+          {stakes.map((s,i)=>{const x=toX(s.interest),y=toY(s.influence);const isH=hov===i;
+            return<g key={i} onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)} style={{cursor:"pointer"}}>
+              <circle cx={x} cy={y} r={isH?s.power+4:s.power} fill={s.color+"18"} stroke={s.color} strokeWidth={isH?2:1.5} style={{transition:"r 0.2s"}}/>
+              <text x={x} y={y+5} textAnchor="middle" style={{fontSize:"14px",fontWeight:700,fill:s.color}}>{letters[i]}</text>
+              {/* Drift arrow */}
+              {s.drift===1&&<polygon points={`${x},${y-s.power-8} ${x+5},${y-s.power+2} ${x-5},${y-s.power+2}`} fill={s.color} opacity="0.65"/>}
+              {s.drift===-1&&<polygon points={`${x},${y+s.power+8} ${x+5},${y+s.power-2} ${x-5},${y+s.power-2}`} fill={s.color} opacity="0.65"/>}
+            </g>})}
+
+          {/* Hover tooltip inside SVG */}
+          {hov!==null&&(()=>{const s=stakes[hov];const x=Math.min(toX(s.interest)+20,580);const y=Math.max(toY(s.influence)-60,25);
+            return<g><rect x={x} y={y} width="180" height="55" rx="4" fill="#fff" stroke="#ccc" strokeWidth="0.5" style={{filter:"drop-shadow(0 2px 4px rgba(0,0,0,0.08))"}}/>
+              <text x={x+8} y={y+16} style={{fontSize:"11px",fontWeight:700,fill:"#111"}}>{s.group_name}</text>
+              <text x={x+8} y={y+29} style={{fontSize:"9px",fill:"#666"}}>{s.type} · {quadLabels[s.quadrant]}</text>
+              <text x={x+8} y={y+43} style={{fontSize:"8.5px",fill:"#888"}}>{s.description}</text>
+            </g>})()}
+        </svg>
+      </div>
+
+      {/* Right sidebar */}
+      <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
+        {/* Stakeholder key */}
+        <div style={{border:"0.5px solid #ddd",padding:"10px 11px"}}>
+          <div style={{fontSize:"8px",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"#666",marginBottom:"9px"}}>Stakeholders</div>
+          {["manage","satisfy","inform","monitor"].map(q=>{const items=byQ[q];if(!items.length)return null;
+            return<div key={q} style={{marginBottom:"8px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"5px",fontSize:"9.5px",fontWeight:700,color:"#111",marginBottom:"3px"}}>
+                <span style={{width:"8px",height:"8px",borderRadius:"50%",background:quadColors[q],flexShrink:0}}/>
+                {quadLabels[q]}
+              </div>
+              {items.map(s=><div key={s._idx} style={{display:"flex",gap:"5px",paddingLeft:"13px",marginBottom:"2px",lineHeight:1.4}}>
+                <span style={{fontSize:"9px",fontWeight:700,minWidth:"11px",flexShrink:0,color:s.color}}>{s._letter}</span>
+                <span style={{fontSize:"9px",color:"#444"}}>{s.group_name}</span>
+              </div>)}
+            </div>})}
+        </div>
+
+        {/* How to read */}
+        <div style={{border:"0.5px solid #ddd",padding:"10px 11px"}}>
+          <div style={{fontSize:"8px",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"#666",marginBottom:"9px"}}>How to read</div>
+          <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"7px"}}>
+            <svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="#aaa" strokeWidth="1" strokeDasharray="3,2"/></svg>
+            <div><div style={{fontSize:"9.5px",color:"#333"}}>Influence link</div><div style={{fontSize:"8.5px",color:"#999"}}>Who shapes whom</div></div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"7px"}}>
+            <svg width="10" height="12"><polygon points="5,0 10,11 0,11" fill="#888" opacity="0.75"/></svg>
+            <div><div style={{fontSize:"9.5px",color:"#333"}}>Drift arrow</div><div style={{fontSize:"8.5px",color:"#999"}}>↑ rising · ↓ declining</div></div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"7px"}}>
+            <svg width="22" height="12"><circle cx="5" cy="6" r="4" fill="none" stroke="#888" strokeWidth="1"/><circle cx="15" cy="6" r="6" fill="none" stroke="#888" strokeWidth="1"/></svg>
+            <div><div style={{fontSize:"9.5px",color:"#333"}}>Node size</div><div style={{fontSize:"8.5px",color:"#999"}}>Organisational power</div></div>
+          </div>
+        </div>
+
+        {/* Priority actions */}
+        <div style={{border:"0.5px solid #ddd",padding:"10px 11px"}}>
+          <div style={{fontSize:"8px",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"#666",marginBottom:"9px"}}>Priority actions</div>
+          {byQ.manage.length>0&&<div style={{display:"flex",gap:"6px",marginBottom:"7px"}}><div style={{width:"3px",borderRadius:"1px",flexShrink:0,minHeight:"36px",background:"#003d82"}}/><div style={{fontSize:"9.5px",color:"#111",lineHeight:1.5}}><b style={{display:"block",fontWeight:700}}>Manage closely</b>{byQ.manage.map(s=>s._letter).join(" + ")} — high influence + high interest. Key stakeholders to engage weekly.</div></div>}
+          {byQ.satisfy.length>0&&<div style={{display:"flex",gap:"6px",marginBottom:"7px"}}><div style={{width:"3px",borderRadius:"1px",flexShrink:0,minHeight:"36px",background:"#1a7a52"}}/><div style={{fontSize:"9.5px",color:"#111",lineHeight:1.5}}><b style={{display:"block",fontWeight:700}}>Keep satisfied</b>{byQ.satisfy.map(s=>s._letter).join(" + ")} — high influence, lower interest. Don't let them disengage.</div></div>}
+          {byQ.inform.length>0&&<div style={{display:"flex",gap:"6px",marginBottom:"7px"}}><div style={{width:"3px",borderRadius:"1px",flexShrink:0,minHeight:"36px",background:"#b06000"}}/><div style={{fontSize:"9.5px",color:"#111",lineHeight:1.5}}><b style={{display:"block",fontWeight:700}}>Keep informed</b>{byQ.inform.map(s=>s._letter).join(" + ")} — growing interest. Potential to become key allies.</div></div>}
+        </div>
+
+        <div style={{fontSize:"8px",color:"#bbb",lineHeight:1.5,marginTop:"2px"}}>Note: node size = organisational power. Drift arrows show projected change in engagement.<br/><br/>Source: {data.length} groups from od_stakeholder_groups. Meridian Dynamics · Synthesis Intelligence</div>
+      </div>
+    </div>
+  </div>);
+}
+
+
+// ═══ PORTFOLIO CASCADE COLUMNS ═══
+// 4 vertical columns, one per portfolio. Read top to bottom:
+// Golden Thread (WHY) → Portfolio (WHO) → Objectives (WHAT) → Actions/Projects (HOW) → Budget
+// Column height = relative effort. Status indicators show health.
+function PortfolioRollup(){
+  const[R,setR]=useState(null);const[loading,setLoading]=useState(true);
+  useEffect(()=>{(async()=>{try{
+    const[portfolios,objectives,projects,actions,strategicPlans,kpis,goldenThreads,users,jtPO,jtPPr,jtPSP,jtAO,jtGO]=await Promise.all([
+      sb.select("od_exec_portfolios",{eq:{org_id:ORG_ID}}),sb.select("od_objectives",{eq:{org_id:ORG_ID}}),
+      sb.select("od_projects",{eq:{org_id:ORG_ID}}),sb.select("od_actions",{eq:{org_id:ORG_ID}}),
+      sb.select("od_strategic_plans",{eq:{org_id:ORG_ID}}),sb.select("od_kpis",{eq:{org_id:ORG_ID}}),
+      sb.select("od_ambition_golden_threads",{eq:{org_id:ORG_ID}}),sb.select("od_users",{eq:{org_id:ORG_ID}}),
+      sb.select("jt_od_exec_portfolios_od_objectives",{eq:{org_id:ORG_ID}}),
+      sb.select("jt_od_exec_portfolios_od_projects",{eq:{org_id:ORG_ID}}),
+      sb.select("jt_od_exec_portfolios_od_strategic_plans",{eq:{org_id:ORG_ID}}),
+      sb.select("jt_od_actions_od_objectives",{eq:{org_id:ORG_ID}}),
+      sb.select("jt_od_ambition_golden_threads_od_objectives",{eq:{org_id:ORG_ID}}),
+    ]);
+    const om=Object.fromEntries(objectives.map(o=>[o.id,o])),pm=Object.fromEntries(projects.map(p=>[p.id,p])),
+          am=Object.fromEntries(actions.map(a=>[a.id,a])),sm=Object.fromEntries(strategicPlans.map(s=>[s.id,s])),
+          gm=Object.fromEntries(goldenThreads.map(g=>[g.id,g])),um=Object.fromEntries(users.map(u=>[u.id,u]));
+    const kbo={};kpis.forEach(k=>{if(!kbo[k.objective_id])kbo[k.objective_id]=[];kbo[k.objective_id].push(k)});
+    const abo={};jtAO.forEach(j=>{if(!abo[j.od_objectives_id])abo[j.od_objectives_id]=[];abo[j.od_objectives_id].push(j.od_actions_id)});
+    const gbo={};jtGO.forEach(j=>{if(!gbo[j.od_objectives_id])gbo[j.od_objectives_id]=[];gbo[j.od_objectives_id].push(j.od_ambition_golden_threads_id)});
+    const result=portfolios.map((p,i)=>{
+      const oi=jtPO.filter(j=>j.od_exec_portfolios_id===p.id).map(j=>j.od_objectives_id);
+      const pi2=jtPPr.filter(j=>j.od_exec_portfolios_id===p.id).map(j=>j.od_projects_id);
+      const si=jtPSP.filter(j=>j.od_exec_portfolios_id===p.id).map(j=>j.od_strategic_plans_id);
+      const objs=oi.map(id=>{const o=om[id];if(!o)return null;return{...o,actions:(abo[id]||[]).map(a=>am[a]).filter(Boolean),kpis:kbo[id]||[],gts:(gbo[id]||[]).map(g=>gm[g]).filter(Boolean)}}).filter(Boolean);
+      const prjs=pi2.map(id=>pm[id]).filter(Boolean);const sps=si.map(id=>sm[id]).filter(Boolean);
+      const tb=prjs.reduce((s,p)=>s+(Number(p.budget_amount)||0),0);const aa=objs.flatMap(o=>o.actions);
+      const owners=(p.owner_ids||[]).map(u=>um[u]).filter(Boolean).map(u=>u.full_name);
+      const gts=[...new Map(objs.flatMap(o=>o.gts.map(g=>[g.id,g])).filter(([_,g])=>g)).values()];
+      return{p,objs,prjs,sps,tb,aa,done:aa.filter(a=>a.status==="Complete").length,owners,gts};
+    });
+    setR(result);
+  }catch(e){console.error(e)}finally{setLoading(false)}})()},[]);
+
+  if(loading)return<div style={{padding:"32px",color:C.grey,fontSize:"13px"}}>Loading…</div>;
+  if(!R||!R.length)return null;
+  const tA=R.reduce((s,r)=>s+r.aa.length,0);const tD=R.reduce((s,r)=>s+r.done,0);
+  const tB=R.reduce((s,r)=>s+r.tb,0);const mxB=Math.max(...R.map(r=>r.tb),1);
+
+  const stC=v=>{if(!v)return{bg:"#F7F7F7",fg:C.grey};const s=String(v).toLowerCase();
+    if(s.includes("complete")||s.includes("ahead"))return{bg:"#E5F5F0",fg:"#00806A"};
+    if(s.includes("on track")||s.includes("progress")||s.includes("planning"))return{bg:"#FFF4E5",fg:"#92400e"};
+    if(s.includes("not started")||s.includes("behind"))return{bg:"#FDECEC",fg:"#B91C1C"};
+    return{bg:"#F7F7F7",fg:C.grey}};
+
+  return(<div style={{padding:"28px 32px"}}>
+    {/* Header */}
+    <div style={{marginBottom:"20px"}}>
+      <div style={{fontSize:"10px",color:C.grey,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:700,marginBottom:"8px"}}>Portfolio alignment</div>
+      <div style={{fontSize:"14px",fontWeight:700,color:C.navy,lineHeight:1.4,marginBottom:"4px"}}>
+        Each column is one portfolio's complete chain from ambition to execution.
+      </div>
+      <div style={{fontSize:"11px",color:C.grey}}>
+        Read top to bottom: golden thread (why) — portfolio (who) — objectives (what) — delivery (how) — budget (how much)
+      </div>
+    </div>
+
+    {/* The 4 columns */}
+    <div style={{display:"grid",gridTemplateColumns:`repeat(${R.length},1fr)`,gap:"16px",alignItems:"start"}}>
+      {R.map((r,i)=>{
+        const donePct=r.aa.length>0?Math.round(r.done/r.aa.length*100):0;
+        const budPct=tB>0?Math.round(r.tb/tB*100):0;
+        return(
+          <div key={r.p.id} style={{animation:`itemIn 0.15s ease ${i*0.05}s both`}}>
+
+            {/* WHY — Golden Thread */}
+            <div style={{padding:"10px 12px",background:C.teal+"08",borderTop:`2px solid ${C.teal}`,marginBottom:"2px"}}>
+              <div style={{fontSize:"8px",color:C.teal,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:700,marginBottom:"4px"}}>Why</div>
+              {r.gts.length>0?r.gts.map(gt=>(
+                <div key={gt.id} style={{fontSize:"11px",fontWeight:600,color:C.navy,lineHeight:1.3}}>{gt.ambition_golden_thread}</div>
+              )):<div style={{fontSize:"11px",color:C.mgrey,fontStyle:"italic"}}>Not linked</div>}
+            </div>
+
+            {/* WHO — Portfolio */}
+            <div style={{padding:"12px",background:C.navy,color:"#fff",marginBottom:"2px"}}>
+              <div style={{fontSize:"13px",fontWeight:700}}>{r.p.portfolio_name.replace(" Portfolio","")}</div>
+              <div style={{fontSize:"10px",opacity:0.7,marginTop:"2px"}}>{r.p.cost_centre_code}{r.owners.length>0?` — ${r.owners.join(", ")}`:""}</div>
+              {r.sps.length>0&&<div style={{fontSize:"9px",opacity:0.5,marginTop:"4px"}}>{r.sps.map(sp=>sp.strategic_plan).join(", ")}</div>}
+            </div>
+
+            {/* WHAT — Objectives */}
+            <div style={{background:"#FAFAFA",padding:"10px 12px",marginBottom:"2px",minHeight:"60px"}}>
+              <div style={{fontSize:"8px",color:C.grey,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:700,marginBottom:"8px"}}>What — {r.objs.length} objective{r.objs.length!==1?"s":""}</div>
+              {r.objs.map(obj=>{
+                const s=stC(obj.status);
+                const kpAvg=obj.kpis.length>0?Math.round(obj.kpis.reduce((s,k)=>s+(k.target_value>0?(k.actual_value/k.target_value)*100:0),0)/obj.kpis.length):null;
+                return(
+                  <div key={obj.id} style={{marginBottom:"10px",paddingLeft:"8px",borderLeft:`2px solid ${s.fg}`}}>
+                    <div style={{fontSize:"11px",fontWeight:600,color:C.navy,lineHeight:1.3,marginBottom:"2px"}}>{obj.objective}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:"4px"}}>
+                      <span style={{fontSize:"9px",fontWeight:600,color:s.fg,background:s.bg,padding:"0 5px"}}>{obj.status}</span>
+                      {kpAvg!==null&&<span style={{fontSize:"9px",color:C.grey}}>{kpAvg}%</span>}
+                    </div>
+                    {/* KPI bars */}
+                    {obj.kpis.map(k=>{
+                      const pct=k.target_value>0?Math.round((k.actual_value/k.target_value)*100):0;
+                      return(<div key={k.id} style={{display:"flex",alignItems:"center",gap:"4px",marginTop:"3px"}}>
+                        <div style={{width:"40px",height:"3px",background:"#E8E8E8"}}><div style={{width:`${Math.min(pct,100)}%`,height:"100%",background:pct>=100?C.teal:pct>=50?C.blue:C.red}}/></div>
+                        <span style={{fontSize:"8px",color:C.grey}}>{k.actual_value}/{k.target_value}</span>
+                      </div>);
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* HOW — Actions + Projects */}
+            <div style={{padding:"10px 12px",marginBottom:"2px",background:"#fff"}}>
+              <div style={{fontSize:"8px",color:C.grey,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:700,marginBottom:"6px"}}>How</div>
+              {/* Action completion */}
+              <div style={{marginBottom:"8px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"3px"}}>
+                  <span style={{fontSize:"10px",color:C.navy}}>{r.aa.length} actions</span>
+                  <span style={{fontSize:"10px",fontWeight:700,color:donePct>=50?C.teal:donePct>0?"#92400e":C.grey}}>{donePct}%</span>
+                </div>
+                <div style={{height:"4px",background:"#E8E8E8"}}>
+                  {r.aa.length>0&&<div style={{display:"flex",height:"100%"}}>
+                    <div style={{width:`${(r.done/r.aa.length)*100}%`,background:C.teal}}/>
+                    <div style={{width:`${((r.aa.length-r.done-r.aa.filter(a=>a.status==="Not Started").length)/r.aa.length)*100}%`,background:C.blue,opacity:0.5}}/>
+                  </div>}
+                </div>
+              </div>
+              {/* Projects */}
+              {r.prjs.map(pr=>{
+                const b=Number(pr.budget_amount)||0;const ps=stC(pr.status);
+                return(<div key={pr.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0",borderTop:"1px solid #F7F7F7"}}>
+                  <span style={{fontSize:"10px",color:C.navy}}>{pr.project_name}</span>
+                  <span style={{fontSize:"10px",fontWeight:700,color:C.navy}}>£{Math.round(b/1000)}k</span>
+                </div>);
+              })}
+            </div>
+
+            {/* Budget bar — proportional across all portfolios */}
+            <div style={{padding:"10px 12px",borderTop:`2px solid ${C.navy}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"4px"}}>
+                <span style={{fontSize:"10px",color:C.grey}}>Budget</span>
+                <span style={{fontSize:"14px",fontWeight:700,color:C.navy}}>£{Math.round(r.tb/1000)}k</span>
+              </div>
+              <div style={{height:"4px",background:"#E8E8E8"}}>
+                <div style={{width:`${budPct}%`,height:"100%",background:C.blue,opacity:0.4}}/>
+              </div>
+              <div style={{fontSize:"9px",color:C.grey,marginTop:"2px"}}>{budPct}% of total £{Math.round(tB/1000)}k</div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+
+    {/* Source */}
+    <div style={{fontSize:"9px",color:C.mgrey,marginTop:"20px"}}>Source: Catalyst DMS — Live data via junction tables — {tA} actions, {tD} complete ({tA>0?Math.round(tD/tA*100):0}%)</div>
+  </div>);
+}
+
+// ═══ ANALYSIS PANEL ═══
+function AnalysisPanel({nodeId,onClose,onOpenInTables}){
+  if(!nodeId)return null;const n=nodes[nodeId];const a=n.analysis;const tn=NT[nodeId];
+  const{data,loading,isLive,refresh}=useData(tn||"");const[er,setEr]=useState(null);const[sg,setSg]=useState(true);
+  return(
+    <div onClick={e=>e.stopPropagation()} style={{height:"100%",background:"#fff",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{flex:1,overflowY:"auto",animation:"panelIn 0.2s ease"}}>
+        {/* Header */}
+        <div style={{padding:"28px 32px 20px",borderBottom:"1px solid #F2F2F2"}}>
+          <button onClick={onClose} style={{position:"absolute",top:20,right:20,background:"none",border:"1px solid #D9D9D9",color:C.grey,cursor:"pointer",width:"28px",height:"28px",fontSize:"13px",display:"flex",alignItems:"center",justifyContent:"center"}}>x</button>
+          <div style={{fontSize:"10px",color:n.color,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:700,marginBottom:"8px"}}>{n.phase}</div>
+          <div style={{fontSize:"20px",fontWeight:700,color:C.navy,marginBottom:"6px"}}>{n.label}</div>
+          <div style={{fontSize:"11px",color:C.grey}}>{tn}</div>
+        </div>
+        {/* Key Question — first thing after title */}
+        <div style={{padding:"16px 32px",borderBottom:"1px solid #F2F2F2",background:"#FAFAFA"}}>
+          <div style={{fontSize:"10px",color:"#D97706",textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:700,marginBottom:"6px"}}>Key question</div>
+          <div style={{fontSize:"14px",color:C.navy,fontStyle:"italic",lineHeight:1.5}}>{a.keyQuestion}</div>
+        </div>
+        {/* Insight — AFTER key question */}
+        <div style={{padding:"16px 32px",borderBottom:"1px solid #F2F2F2"}}>
+          <div style={{fontSize:"10px",color:C.grey,textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:700,marginBottom:"6px"}}>Insight</div>
+          <div style={{fontSize:"13px",color:C.grey,lineHeight:1.7}}>{a.insight}</div>
+        </div>
+        {/* Records */}
+        {tn&&<div style={{padding:"20px 32px",borderBottom:"1px solid #F2F2F2"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
+            <div style={{fontSize:"10px",color:C.navy,textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:700}}>Records</div>
+            <div style={{display:"flex",gap:"6px"}}>
+              <button className="btn" onClick={()=>setSg(!sg)} style={{padding:"3px 10px",fontSize:"10px"}}>{sg?"Hide":"Show"}</button>
+              {onOpenInTables&&<button className="btn btn-fill" onClick={()=>onOpenInTables(tn)} style={{padding:"3px 10px",fontSize:"10px"}}>Open in Tables</button>}
+            </div>
+          </div>
+          {sg&&<Grid tableName={tn} data={data} loading={loading} isLive={isLive} refresh={refresh} onExpand={r=>setEr(r)} compact/>}
+        </div>}
+        {/* Portfolio Spine — AFTER records */}
+        {nodeId==="portfolios"&&<PortfolioRollup/>}
+        {/* Web Research Source Ecosystem */}
+        {nodeId==="web_research"&&<WebResearchCard/>}
+        {nodeId==="value_chain"&&<ValueChainCard/>}
+        {nodeId==="stakeholder_map"&&<StakeholderCard/>}
+      </div>
+      {er&&<RecordDetail record={er} allRecords={data} tableName={tn} onClose={()=>setEr(null)} onSave={refresh} onNav={r=>setEr(r)}/>}
+    </div>);
+}
+
+// ═══ GRAPH ═══
+function GraphView({selected,setSelected,onLegShow}){
+  const[hov,setHov]=useState(null);const[cnt,setCnt]=useState({});
+  const ac=hov||selected;
+  // Build full edge set including scan feeds and RASCI link
+  const fullEdges=useMemo(()=>{
+    const edges=[...allEdges.map(e=>({...e,type:"strategic"}))];
+    // Scanning feed edges
+    ["web_research","value_chain","stakeholder_map","jtbd"].forEach(sid=>{edges.push({from:sid,to:"synthesis",type:"scan"})});
+    // RASCI → Portfolios accountability
+    edges.push({from:"rasci",to:"portfolios",type:"accountability"});
+    return edges;
+  },[]);
+  const hN=new Set(),hE=new Set();
+  if(ac){hN.add(ac);fullEdges.forEach((e,i)=>{if(e.from===ac||e.to===ac){hN.add(e.from);hN.add(e.to);hE.add(i)}})}
+  useEffect(()=>{if(onLegShow)onLegShow(!!hov)},[hov]);
+  useEffect(()=>{(async()=>{const c={};for(const[n,t]of Object.entries(NT)){try{const r=await sb.select(t,{eq:{org_id:ORG_ID}});c[n]=r.length}catch{c[n]="?"}}setCnt(c)})()},[]);
+  const gc=id=>cnt[id]!==undefined?cnt[id]:"…";
+  // Unique colour per phase — no duplicates
+  const phases=[
+    {y:40,h:140,l:"Scan",c:"#0EA5A2",dashed:true},
+    {y:185,h:110,l:"Diagnose",c:"#E8532E"},
+    {y:300,h:110,l:"Define",c:"#F59E0B"},
+    {y:420,h:140,l:"Ambition",c:"#10856B"},
+    {y:570,h:140,l:"Design",c:"#D97706"},
+    {y:720,h:110,l:"Structure",c:"#2251FF"},
+    {y:840,h:110,l:"Deploy",c:"#1E40AF"},
+    {y:960,h:100,l:"Deliver",c:"#0D7377"},
+    {y:1080,h:120,l:"Performance & Compliance",c:"#6366f1"}
+  ];
+
+  return(<div style={{display:"flex",justifyContent:"center",padding:"32px 0 48px"}}>
+    <svg width={950} height={1280} viewBox="0 0 950 1280" style={{overflow:"visible"}}>
+      <rect width={950} height={1280} fill="#fff"/>
+      {phases.map((p,i)=>(<g key={i}>
+        <rect x={0} y={p.y} width={950} height={p.h} fill={p.c} opacity={0.03}/>
+        <line x1={0} y1={p.y} x2={950} y2={p.y} stroke={p.c} strokeWidth={0.5} opacity={0.15} strokeDasharray={p.dashed?"6,4":"none"}/>
+        <rect x={0} y={p.y} width={3} height={p.h} fill={p.c} opacity={0.4}/>
+        <text x={14} y={p.y+16} style={{fontSize:"9px",fontWeight:700,fill:p.c,textTransform:"uppercase",letterSpacing:"0.1em"}}>{p.l}</text>
+      </g>))}
+      {/* All edges — strategic, scan, and accountability — unified highlight */}
+      {fullEdges.map((e,i)=>{const f=nodes[e.from],t=nodes[e.to];if(!f||!t)return null;
+        const h=hE.has(i),a=ac!==null;const isCultural=f.cultural||t.cultural;
+        const isScan=e.type==="scan";const isAcct=e.type==="accountability";
+        const edgeColor=isCultural?PUR:isAcct?"#6366f1":isScan?"#0EA5A2":h?f.color:f.color+"40";
+        const dashArr=isCultural?"5,4":isScan?"4,3":isAcct?"4,3":"none";
+        const path=isAcct?`M${f.x+NW/2} ${f.y} L${t.x+NW/2} ${t.y+NH}`:ep(f,t);
+        return<path key={i} d={path} fill="none" stroke={edgeColor} strokeWidth={h?2.5:isScan||isAcct?0.8:1} opacity={a?(h?0.85:0.12):isScan||isAcct?0.2:0.4} strokeDasharray={dashArr} style={{transition:"all 0.3s"}}/>;
+      })}
+      {/* Animated dots on highlighted edges */}
+      {ac&&fullEdges.filter((_,i)=>hE.has(i)).map((e,i)=>{const f=nodes[e.from],t=nodes[e.to];if(!f||!t)return null;
+        const isAcct=e.type==="accountability";const path=isAcct?`M${f.x+NW/2} ${f.y} L${t.x+NW/2} ${t.y+NH}`:ep(f,t);
+        return<circle key={`p${i}`} r="2.5" fill={f.color} opacity={0.6}><animateMotion dur="1.5s" repeatCount="indefinite" path={path}/></circle>})}
+      {/* Nodes */}
+      {Object.values(nodes).map(n=>{const h=hN.has(n.id),a=ac!==null,c=gc(n.id);const isCult=n.cultural;const isDash=n.dashed;
+        return(<g key={n.id} onMouseEnter={()=>setHov(n.id)} onMouseLeave={()=>setHov(null)} onClick={e=>{e.stopPropagation();setSelected(n.id)}} style={{cursor:"pointer"}}>
+          <rect x={n.x} y={n.y} width={NW} height={NH} rx={0} fill={isCult?(PUR+"06"):h?n.color+"08":"#fff"} stroke={isCult?PUR:n.color} strokeWidth={h?1.5:0.5} strokeDasharray={isDash?"4,3":"none"} opacity={a?(h?1:0.3):1} style={{transition:"all 0.3s"}}/>
+          {isCult&&<rect x={n.x} y={n.y} width={NW} height={2.5} fill={PUR} opacity={0.6}/>}
+          <text x={n.x+12} y={n.y+22} style={{fontSize:"13px",fontWeight:700,fill:C.navy,opacity:a?(h?1:0.3):1}}>{n.label}</text>
+          <text x={n.x+12} y={n.y+40} style={{fontSize:"10px",fill:C.grey,opacity:a?(h?1:0.3):1}}>{c} records</text>
+          <rect x={n.x+NW-28} y={n.y+6} width={22} height={14} fill={isCult?PUR:n.color} opacity={0.8}/>
+          <text x={n.x+NW-17} y={n.y+16} textAnchor="middle" style={{fontSize:"9px",fill:"#fff",fontWeight:700}}>{c}</text>
+        </g>);
+      })}
+    </svg>
+  </div>);
+}
+
+// ═══ CONNECTION ═══
+function ConnBadge(){
+  const[s,setS]=useState("…");
+  useEffect(()=>{sb.ping().then(ok=>setS(ok?"live":"demo"));const i=setInterval(()=>sb.ping().then(ok=>setS(ok?"live":"demo")),30000);return()=>clearInterval(i)},[]);
+  return<span className={`badge badge-${s==="live"?"live":"demo"}`}>{s==="live"?"Live":"Demo"}</span>;
+}
+
+// ═══ DASHBOARD ═══
+function Dashboard(){
+  const{data:obj}=useData("od_objectives");const{data:kpis}=useData("od_kpis");const{data:acts}=useData("od_actions");
+  const as=useMemo(()=>{const c=acts.filter(a=>a.status==="Complete").length,p=acts.filter(a=>a.status==="In Progress").length,n=acts.filter(a=>a.status==="Not Started").length;return{c,p,n,t:acts.length}},[acts]);
+  return(<div style={{maxWidth:"920px",margin:"0 auto",padding:"36px 48px"}}>
+    <div style={{fontSize:"10px",color:C.grey,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"4px"}}>Dashboard</div>
+    <div style={{fontSize:"24px",fontWeight:700,color:C.navy,marginBottom:"28px"}}>Strategic performance</div>
+    <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(kpis.length,5)},1fr)`,gap:"12px",marginBottom:"28px"}}>
+      {kpis.map((k,i)=>{const p=k.target_value>0?Math.round((k.actual_value/k.target_value)*100):0;const cl=p>=100?C.teal:p>=70?C.blue:"#D97706";
+        return<div key={i} style={{borderTop:`3px solid ${cl}`,padding:"16px 0",textAlign:"center"}}>
+          <div style={{fontSize:"28px",fontWeight:700,color:C.navy}}>{p}%</div>
+          <div style={{fontSize:"10px",color:C.grey,marginTop:"2px"}}>{k.actual_value} / {k.target_value}</div>
+          <div style={{fontSize:"12px",color:C.navy,marginTop:"6px"}}>{k.kpi_name}</div>
+        </div>})}
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"20px"}}>
+      <div style={{borderTop:"3px solid "+C.teal,padding:"16px 0"}}>
+        <div style={{fontSize:"10px",color:C.grey,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"12px"}}>Actions — {as.t} total</div>
+        <div style={{display:"flex",height:"6px",marginBottom:"10px"}}>{as.c>0&&<div style={{width:`${(as.c/as.t)*100}%`,background:C.teal}}/>}{as.p>0&&<div style={{width:`${(as.p/as.t)*100}%`,background:C.blue}}/>}{as.n>0&&<div style={{width:`${(as.n/as.t)*100}%`,background:C.mgrey}}/>}</div>
+        <div style={{display:"flex",gap:"12px",fontSize:"11px",color:C.grey}}><span>{as.c} complete</span><span>{as.p} active</span><span>{as.n} pending</span></div>
+      </div>
+      <div style={{borderTop:"3px solid "+C.blue,padding:"16px 0"}}>
+        <div style={{fontSize:"10px",color:C.grey,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"12px"}}>Objectives</div>
+        {obj.map((o,i)=>{const s=sc(o.status);return<div key={i} style={{display:"flex",alignItems:"center",gap:"8px",padding:"5px 0",borderBottom:i<obj.length-1?"1px solid #F7F7F7":"none"}}>
+          <span className={`tag tag-${s}`} style={{fontSize:"10px",padding:"1px 6px"}}>{o.status}</span>
+          <span style={{fontSize:"12px",flex:1}}>{o.objective}</span>
+        </div>})}
+      </div>
+    </div>
+  </div>);
+}
+
+// ═══ APP ═══
+function App(){
+  const[tab,setTab]=useState("graph");const[sel,setSel]=useState(null);const[ti,setTi]=useState(null);
+  const[splitPct,setSplitPct]=useState(25);const[dragging,setDragging]=useState(false);const[legVis,setLegVis]=useState(false);
+  const openT=t=>{setSel(null);setTi(t);setTab("tables")};
+  const tabs=[{k:"graph",l:"Strategic Map"},{k:"tables",l:"Tables"},{k:"dashboard",l:"Dashboard"}];
+
+  const onDragStart=useCallback((e)=>{e.preventDefault();setDragging(true)},[]);
+  useEffect(()=>{
+    if(!dragging)return;
+    const onMove=(e)=>{const pct=(e.clientX/window.innerWidth)*100;setSplitPct(Math.max(25,Math.min(75,pct)))};
+    const onUp=()=>setDragging(false);
+    window.addEventListener("mousemove",onMove);window.addEventListener("mouseup",onUp);
+    return()=>{window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp)};
+  },[dragging]);
+
+  return(<div onClick={()=>setSel(null)} style={{background:"#fff",minHeight:"100vh"}}>
+    <div style={{position:"fixed",top:0,left:0,right:0,zIndex:100,background:"#ffffffee",backdropFilter:"blur(8px)",borderBottom:"1px solid #D9D9D9"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 32px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
+          <span style={{fontSize:"14px",fontWeight:700,color:C.navy,letterSpacing:"0.02em"}}>Synthesis</span>
+          <span style={{color:C.mgrey}}>|</span>
+          <span style={{fontSize:"12px",color:C.grey}}>Enterprise</span>
+          <ConnBadge/>
+        </div>
+        <div style={{display:"flex",gap:"2px"}}>
+          {tabs.map(t=><button key={t.k} onClick={e=>{e.stopPropagation();setTab(t.k);setSel(null)}} style={{background:tab===t.k?C.navy:"transparent",border:"none",cursor:"pointer",padding:"7px 16px",fontSize:"12px",fontWeight:tab===t.k?700:400,color:tab===t.k?"#fff":C.grey,letterSpacing:"0.02em",transition:"all 0.15s"}}>{t.l}</button>)}
+        </div>
+      </div>
+    </div>
+    <div style={{paddingTop:"52px",display:"flex",height:"calc(100vh - 52px)",userSelect:dragging?"none":"auto"}}>
+      {tab==="graph"&&<div style={{flex:sel?`0 0 ${splitPct}%`:"1",overflow:"auto",transition:dragging?"none":"flex 0.3s ease"}}><GraphView selected={sel} setSelected={setSel} onLegShow={setLegVis}/></div>}
+      {tab==="graph"&&sel&&<>
+        <div onMouseDown={onDragStart} style={{width:"6px",cursor:"col-resize",background:dragging?C.blue:"#D9D9D9",flexShrink:0,transition:"background 0.15s",position:"relative",zIndex:10}}>
+          <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:"2px",height:"32px",background:dragging?"#fff":"#B0B0B0",borderRadius:"1px"}}/>
+        </div>
+        <div style={{flex:`0 0 calc(${100-splitPct}% - 6px)`,overflow:"hidden",transition:dragging?"none":"flex 0.3s ease"}}><AnalysisPanel nodeId={sel} onClose={()=>setSel(null)} onOpenInTables={openT}/></div>
+      </>}
+      {tab==="tables"&&<div style={{flex:1,overflow:"hidden"}}><TablesTab initialTable={ti}/></div>}
+      {tab==="dashboard"&&<div style={{flex:1,overflow:"auto"}}><Dashboard/></div>}
+    </div>
+    {tab==="graph"&&!sel&&<div className="map-legend" style={{position:"fixed",bottom:0,left:"50%",transform:`translateX(-50%) translateY(${legVis?"0":"calc(100% - 6px)"})`,display:"flex",alignItems:"center",gap:"16px",fontSize:"10px",color:C.grey,background:"#fff",border:"1px solid #D9D9D9",padding:"8px 20px",zIndex:100,transition:"transform 0.35s cubic-bezier(0.4,0,0.2,1)",cursor:"default"}} onMouseEnter={e=>{e.currentTarget.style.transform="translateX(-50%) translateY(0)";setLegVis(true)}} onMouseLeave={e=>{e.currentTarget.style.transform="translateX(-50%) translateY(calc(100% - 6px))";setLegVis(false)}}>
+      <div style={{position:"absolute",top:"-6px",left:"50%",transform:"translateX(-50%)",width:"40px",height:"6px",background:"#fff",borderTop:"1px solid #D9D9D9",borderLeft:"1px solid #D9D9D9",borderRight:"1px solid #D9D9D9",borderRadius:"4px 4px 0 0",display:"flex",justifyContent:"center",alignItems:"center"}}><div style={{width:"16px",height:"2px",background:"#B0B0B0",borderRadius:"1px"}}/></div>
+      {[{l:"Scan",c:"#0EA5A2"},{l:"Diagnose",c:"#E8532E"},{l:"Define",c:"#F59E0B"},{l:"Ambition",c:"#10856B"},{l:"Design",c:"#D97706"},{l:"Structure",c:"#2251FF"},{l:"Deploy",c:"#1E40AF"},{l:"Deliver",c:"#0D7377"},{l:"P&C",c:"#6366f1"}].map((p,i)=>
+        <span key={i} style={{display:"flex",alignItems:"center",gap:"3px"}}><span style={{width:"7px",height:"7px",background:p.c,display:"inline-block"}}></span>{p.l}</span>
+      )}
+      <span style={{borderLeft:"1px solid #D9D9D9",height:"16px",margin:"0 4px"}}></span>
+      <span style={{display:"flex",alignItems:"center",gap:"4px"}}><svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke={C.navy} strokeWidth="1.2"/></svg>Strategic flow</span>
+      <span style={{display:"flex",alignItems:"center",gap:"4px"}}><svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke="#7C3AED" strokeWidth="1.2" strokeDasharray="5,4"/></svg>Cultural thread</span>
+      <span style={{display:"flex",alignItems:"center",gap:"4px"}}><svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke={C.teal} strokeWidth="0.8" strokeDasharray="4,3"/></svg>Scanning feed</span>
+      <span style={{display:"flex",alignItems:"center",gap:"4px"}}><svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke="#6366f1" strokeWidth="1" strokeDasharray="4,3"/></svg>Accountability link</span>
+      <span style={{display:"flex",alignItems:"center",gap:"4px"}}><span style={{width:"7px",height:"7px",border:"1.5px dashed #7C3AED",display:"inline-block"}}></span>New node</span>
+      <span style={{color:C.mgrey,marginLeft:"4px",borderLeft:"1px solid #D9D9D9",paddingLeft:"12px"}}>© 2026 Build Any Ltd. All rights reserved.</span>
+    </div>}
+  </div>);
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
